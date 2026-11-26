@@ -57,3 +57,15 @@ Tim played it and said the handling is much better.
   screen coverage (share of 100 unit cells with track) 0.64 average. 84 simulated races
   across all families finish, furthest distance past the edge 14.0 units.
 - Not done: self-crossing (figure of eight) layouts. Pinch points are mild.
+
+## Backdrop themes (2026-11-26)
+
+- Ten seed-fixed themes in `CONFIG.themes`: forest, autumn, pine, heath, gravel, farm,
+  winter, blossom, volcano, causeway. Each has a palette plus a ground pattern, tree style,
+  bush style and flower colours. Intro 1 is pinned to forest, Intro 2 to autumn.
+- Checked by screenshot: gravel, causeway, farm, volcano, winter, blossom.
+- Weak spots: snow-covered pines read as white rings; pickups and hazards keep the same
+  colours on every theme (mud is hard to see on the volcano track).
+- Six more themes added the same day: beach (palms, sea edge), desert (cacti), bog (peat
+  pools, standing stones), night, bluebell, slate. Sixteen in total. All drawn in code, no
+  image files. Installed size 443 KB (245 KB transfer), target is under 1 MB.

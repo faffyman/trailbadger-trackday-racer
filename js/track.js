@@ -105,6 +105,7 @@ function makeProfile(id, base) {
     if (id === 'intro-1') {
         profile.kind = 'intro';
         profile.name = 'First Ride';
+        profile.theme = CONFIG.themes.find((th) => th.key === 'forest');
         profile.width = t.widthIntro;
         profile.aiPace = 0.80;
         profile.laps = t.lapsIntro;
@@ -123,6 +124,7 @@ function makeProfile(id, base) {
     } else if (id === 'intro-2') {
         profile.kind = 'intro';
         profile.name = 'Acorn Twister';
+        profile.theme = CONFIG.themes.find((th) => th.key === 'autumn');
         profile.width = t.widthIntro;
         profile.aiPace = 0.90;
         profile.laps = t.lapsIntro;

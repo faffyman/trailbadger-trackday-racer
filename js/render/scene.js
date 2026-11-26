@@ -128,8 +128,11 @@ function paintGround(ctx, t, rnd) {
     }
     ctx.globalAlpha = 1;
 
+    paintPattern(ctx, th, rnd);
+    const grassy = th.pattern === 'grass' || th.pattern === undefined;
+
     // Faint mown stripes
-    ctx.globalAlpha = 0.045;
+    ctx.globalAlpha = grassy ? 0.045 : 0;
     ctx.fillStyle = '#ffffff';
     for (let x = -200; x < WORLD_W + 200; x += 120) {
         ctx.save();
@@ -144,7 +147,7 @@ function paintGround(ctx, t, rnd) {
     const tones = [shadeHex(th.ground, -0.22), shadeHex(th.ground, 0.2), shadeHex(th.groundAlt, -0.1)];
     for (let k = 0; k < 3; k++) {
         ctx.beginPath();
-        for (let i = 0; i < 2400; i++) {
+        for (let i = 0; i < (grassy ? 2400 : th.pattern === 'hex' || th.pattern === 'rows' ? 500 : 0); i++) {
             const x = rnd() * WORLD_W;
             const y = rnd() * WORLD_H;
             const a = -1.2 - rnd() * 0.5 + (rnd() - 0.5) * 0.8;
@@ -161,15 +164,282 @@ function paintGround(ctx, t, rnd) {
     ctx.globalAlpha = 1;
 
     // Tiny flowers
-    const flowers = ['#fff4c2', '#ffffff', '#ffd1e6', '#ffe38a'];
-    for (let i = 0; i < 160; i++) {
+    const flowers = th.flowers || ['#fff4c2', '#ffffff', '#ffd1e6', '#ffe38a'];
+    const flowerCount = flowers.length ? (th.flowerCount === undefined ? 160 : th.flowerCount) : 0;
+    for (let i = 0; i < flowerCount; i++) {
         ctx.fillStyle = flowers[(rnd() * flowers.length) | 0];
         ctx.globalAlpha = 0.55 + rnd() * 0.3;
         ctx.beginPath();
-        ctx.arc(rnd() * WORLD_W, rnd() * WORLD_H, 1 + rnd() * 1.2, 0, TAU);
+        ctx.arc(rnd() * WORLD_W, rnd() * WORLD_H, (1 + rnd() * 1.2) * (th.flowerSize || 1), 0, TAU);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
+}
+
+// Extra ground detail that gives each backdrop theme its own feel.
+function paintPattern(ctx, th, rnd) {
+    const p = th.pattern;
+    if (p === 'rows') {
+        // Crop rows across the whole field, with a few darker tractor lines.
+        ctx.save();
+        ctx.translate(WORLD_W / 2, WORLD_H / 2);
+        ctx.rotate(-0.32 + rnd() * 0.64);
+        for (let y = -1100; y < 1100; y += 13) {
+            ctx.fillStyle = shadeHex(th.ground, (rnd() - 0.5) * 0.16 - 0.1);
+            ctx.globalAlpha = 0.55;
+            ctx.fillRect(-1100, y, 2200, 5);
+            ctx.fillStyle = shadeHex(th.ground, 0.22);
+            ctx.globalAlpha = 0.35;
+            ctx.fillRect(-1100, y + 6, 2200, 3);
+        }
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = '#5c3d22';
+        for (let y = -1000; y < 1100; y += 234) {
+            ctx.fillRect(-1100, y, 2200, 6);
+            ctx.fillRect(-1100, y + 26, 2200, 6);
+        }
+        ctx.restore();
+    } else if (p === 'snow') {
+        // Drifts with a blue shadow side, and sparkles.
+        for (let i = 0; i < 70; i++) {
+            const x = rnd() * WORLD_W;
+            const y = rnd() * WORLD_H;
+            const rx = 40 + rnd() * 90;
+            const ry = rx * (0.3 + rnd() * 0.25);
+            const rot = -0.5 + rnd();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#b9cee0';
+            ctx.beginPath();
+            ctx.ellipse(x + 5, y + 7, rx, ry, rot, 0, TAU);
+            ctx.fill();
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(x, y, rx, ry, rot, 0, TAU);
+            ctx.fill();
+        }
+    } else if (p === 'gravel') {
+        const tones = th.pebbles || [shadeHex(th.ground, 0.28), shadeHex(th.ground, -0.28), '#b9a98a', '#6a665f'];
+        for (let i = 0; i < 9000; i++) {
+            ctx.fillStyle = tones[(rnd() * tones.length) | 0];
+            ctx.globalAlpha = 0.35 + rnd() * 0.4;
+            ctx.beginPath();
+            ctx.ellipse(rnd() * WORLD_W, rnd() * WORLD_H, 1 + rnd() * 2.6, 0.8 + rnd() * 1.8, rnd() * TAU, 0, TAU);
+            ctx.fill();
+        }
+        // Puddles
+        for (let i = 0; i < 9; i++) {
+            const x = rnd() * WORLD_W;
+            const y = rnd() * WORLD_H;
+            const r = 16 + rnd() * 26;
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#5f7f93';
+            ctx.beginPath();
+            ctx.ellipse(x, y, r, r * 0.6, rnd() * TAU, 0, TAU);
+            ctx.fill();
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = '#cfe3ee';
+            ctx.beginPath();
+            ctx.ellipse(x - r * 0.2, y - r * 0.15, r * 0.4, r * 0.16, 0, 0, TAU);
+            ctx.fill();
+        }
+    } else if (p === 'ash') {
+        // Glowing lava cracks and pools on dark rock.
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let i = 0; i < 34; i++) {
+            let x = rnd() * WORLD_W;
+            let y = rnd() * WORLD_H;
+            let a = rnd() * TAU;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            const parts = 4 + ((rnd() * 6) | 0);
+            for (let k = 0; k < parts; k++) {
+                a += (rnd() - 0.5) * 1.5;
+                const l = 18 + rnd() * 34;
+                x += Math.cos(a) * l;
+                y += Math.sin(a) * l;
+                ctx.lineTo(x, y);
+            }
+            ctx.shadowColor = '#ff5a1f';
+            ctx.shadowBlur = 16;
+            ctx.strokeStyle = '#ff7a2a';
+            ctx.globalAlpha = 0.85;
+            ctx.lineWidth = 2.2 + rnd() * 2.4;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#ffd98a';
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 0.9;
+            ctx.stroke();
+        }
+        ctx.restore();
+        for (let i = 0; i < 12; i++) {
+            const x = rnd() * WORLD_W;
+            const y = rnd() * WORLD_H;
+            const r = 22 + rnd() * 34;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.8);
+            g.addColorStop(0, '#ffd27a');
+            g.addColorStop(0.3, '#ff7a2a');
+            g.addColorStop(0.55, 'rgba(190,40,20,0.75)');
+            g.addColorStop(1, 'rgba(120,20,10,0)');
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(x, y, r * 1.8, r * 1.2, rnd() * TAU, 0, TAU);
+            ctx.fill();
+        }
+    } else if (p === 'sand') {
+        // Wind ripples in the sand.
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        for (let y = 6; y < WORLD_H; y += 15) {
+            const ph = rnd() * TAU;
+            const amp = 2 + rnd() * 3;
+            ctx.beginPath();
+            let pen = false;
+            for (let x = 0; x <= WORLD_W; x += 16) {
+                const yy = y + Math.sin(x * 0.021 + ph) * amp + Math.sin(x * 0.007 + ph * 2) * amp * 1.6;
+                // Broken lines look more natural than full stripes
+                if (Math.sin(x * 0.013 + ph * 3) > -0.35) {
+                    if (pen) ctx.lineTo(x, yy);
+                    else ctx.moveTo(x, yy);
+                    pen = true;
+                } else {
+                    pen = false;
+                }
+            }
+            ctx.strokeStyle = shadeHex(th.ground, -0.22);
+            ctx.globalAlpha = 0.3;
+            ctx.stroke();
+        }
+        if (th.sea) {
+            // The sea along the bottom of the world, with a line of foam.
+            const top = WORLD_H - 30;
+            const edge = (x, k) => top + Math.sin(x * 0.018 + k) * 5 + Math.sin(x * 0.05 + k * 2) * 2;
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_H);
+            for (let x = 0; x <= WORLD_W; x += 12) ctx.lineTo(x, edge(x, 0) - 9);
+            ctx.lineTo(WORLD_W, WORLD_H);
+            ctx.closePath();
+            ctx.fillStyle = shadeHex(th.ground, -0.2);
+            ctx.globalAlpha = 0.6;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_H);
+            for (let x = 0; x <= WORLD_W; x += 12) ctx.lineTo(x, edge(x, 0));
+            ctx.lineTo(WORLD_W, WORLD_H);
+            ctx.closePath();
+            ctx.fillStyle = '#3fa7c4';
+            ctx.globalAlpha = 1;
+            ctx.fill();
+            ctx.beginPath();
+            for (let x = 0; x <= WORLD_W; x += 12) {
+                if (x === 0) ctx.moveTo(x, edge(x, 0));
+                else ctx.lineTo(x, edge(x, 0));
+            }
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3.5;
+            ctx.globalAlpha = 0.9;
+            ctx.stroke();
+            ctx.beginPath();
+            for (let x = 0; x <= WORLD_W; x += 12) {
+                if (x === 0) ctx.moveTo(x, edge(x, 1.7) + 12);
+                else ctx.lineTo(x, edge(x, 1.7) + 12);
+            }
+            ctx.lineWidth = 1.6;
+            ctx.globalAlpha = 0.45;
+            ctx.stroke();
+        }
+    } else if (p === 'bog') {
+        // Dark peat pools with a pale sheen and a rim of reeds.
+        for (let i = 0; i < 30; i++) {
+            const x = rnd() * WORLD_W;
+            const y = rnd() * WORLD_H;
+            const rx = 22 + rnd() * 48;
+            const ry = rx * (0.45 + rnd() * 0.3);
+            const rot = rnd() * TAU;
+            ctx.globalAlpha = 0.55;
+            ctx.fillStyle = shadeHex(th.ground, -0.4);
+            ctx.beginPath();
+            ctx.ellipse(x, y, rx + 5, ry + 5, rot, 0, TAU);
+            ctx.fill();
+            ctx.globalAlpha = 0.92;
+            ctx.fillStyle = '#23282f';
+            ctx.beginPath();
+            ctx.ellipse(x, y, rx, ry, rot, 0, TAU);
+            ctx.fill();
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = '#b9cbd8';
+            ctx.beginPath();
+            ctx.ellipse(x - rx * 0.2, y - ry * 0.25, rx * 0.45, ry * 0.2, rot, 0, TAU);
+            ctx.fill();
+        }
+    } else if (p === 'hex') {
+        // Basalt columns: a honeycomb of stone tops in mixed greys, mossy in places.
+        const R = 21;
+        const dx = R * Math.sqrt(3);
+        const dy = R * 1.5;
+        let row = 0;
+        for (let y = -R; y < WORLD_H + R; y += dy, row++) {
+            for (let x = (row % 2) * dx * 0.5 - dx; x < WORLD_W + dx; x += dx) {
+                const v = rnd();
+                const mossy = Math.sin(x * 0.006 + 1.3) + Math.cos(y * 0.008 - 0.4) + (v - 0.5) * 1.2 > 1.05;
+                ctx.fillStyle = mossy ? shadeHex(th.groundAlt, (v - 0.5) * 0.3) : shadeHex(th.ground, (v - 0.5) * 0.55);
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                for (let k = 0; k < 6; k++) {
+                    const a = (k / 6) * TAU + TAU / 12;
+                    const hx = x + Math.cos(a) * (R - 1.2);
+                    const hy = y + Math.sin(a) * (R - 1.2);
+                    if (k === 0) ctx.moveTo(hx, hy);
+                    else ctx.lineTo(hx, hy);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalAlpha = 0.16;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(x - 4, y - 5, R * 0.42, 0, TAU);
+                ctx.fill();
+            }
+        }
+    }
+    ctx.globalAlpha = 1;
+}
+
+function paintHayBale(ctx, d, rnd) {
+    const r = d.r * 0.95;
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(r * 0.35, r * 0.45, r * 1.05, r * 0.85, 0.3, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#b98a2e';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#e6c25a';
+    ctx.beginPath();
+    ctx.arc(-r * 0.08, -r * 0.08, r * 0.88, 0, TAU);
+    ctx.fill();
+    // Spiral of rolled straw
+    ctx.strokeStyle = '#a87a26';
+    ctx.lineWidth = 1.1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    const rot = rnd() * TAU;
+    for (let a = 0; a < TAU * 2.6; a += 0.3) {
+        const rr = (a / (TAU * 2.6)) * r * 0.82;
+        const x = -r * 0.08 + Math.cos(a + rot) * rr;
+        const y = -r * 0.08 + Math.sin(a + rot) * rr;
+        if (a === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
 }
 
 function paintTrack(ctx, t, rnd) {
@@ -558,6 +828,10 @@ function paintRock(ctx, d, th, rnd) {
 }
 
 function paintBush(ctx, d, th, rnd) {
+    if (th.bush === 'bale') {
+        paintHayBale(ctx, d, rnd);
+        return;
+    }
     const cols = th.foliage;
     ctx.save();
     ctx.translate(d.x, d.y);
@@ -583,7 +857,7 @@ function paintBush(ctx, d, th, rnd) {
         }
     }
     if (d.v > 0.55) {
-        const berry = th.key === 'heath' ? '#ffd1e6' : th.key === 'autumn' ? '#ffd35a' : '#e8473f';
+        const berry = th.berry || '#e8473f';
         ctx.fillStyle = berry;
         for (let i = 0; i < 7; i++) {
             ctx.beginPath();
@@ -594,15 +868,120 @@ function paintBush(ctx, d, th, rnd) {
     ctx.restore();
 }
 
+// A palm seen from above: long fronds around a small crown.
+function paintPalm(ctx, d, th, rnd, scale) {
+    const R = d.r * 1.35;
+    const fronds = 8;
+    const rot = rnd() * TAU;
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    for (let pass = 0; pass < 2; pass++) {
+        ctx.save();
+        if (pass === 0) {
+            ctx.translate(9 * scale, 12 * scale);
+            ctx.globalAlpha = 0.3;
+        }
+        for (let i = 0; i < fronds; i++) {
+            const a = rot + (i / fronds) * TAU + (rnd() - 0.5) * 0.25;
+            const len = R * (0.85 + rnd() * 0.3);
+            ctx.save();
+            ctx.rotate(a);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(len * 0.5, -R * 0.26, len, 0);
+            ctx.quadraticCurveTo(len * 0.5, R * 0.26, 0, 0);
+            ctx.fillStyle = pass === 0 ? '#000000' : th.foliage[i % th.foliage.length];
+            ctx.fill();
+            if (pass === 1) {
+                ctx.strokeStyle = shadeHex(th.foliage[0], -0.3);
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(len * 0.92, 0);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+    ctx.fillStyle = '#7a5a34';
+    ctx.beginPath();
+    ctx.arc(0, 0, R * 0.16, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+}
+
+// A cactus seen from above: a ribbed round body with one or two arms and a flower.
+function paintCactus(ctx, d, th, rnd, scale) {
+    const R = d.r * 0.8;
+    const base = th.foliage[Math.min(th.foliage.length - 1, Math.floor(d.v * th.foliage.length))];
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(8 * scale + R * 0.3, 10 * scale + R * 0.3, R * 1.2, R * 0.9, 0.5, 0, TAU);
+    ctx.fill();
+    const blobs = [[0, 0, R]];
+    const arms = 1 + ((rnd() * 2) | 0);
+    for (let i = 0; i < arms; i++) {
+        const a = rnd() * TAU;
+        blobs.push([Math.cos(a) * R * 1.05, Math.sin(a) * R * 1.05, R * 0.55]);
+    }
+    for (let i = 0; i < blobs.length; i++) {
+        const b = blobs[i];
+        ctx.fillStyle = shadeHex(base, -0.25);
+        ctx.beginPath();
+        ctx.arc(b[0], b[1], b[2], 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = base;
+        ctx.beginPath();
+        ctx.arc(b[0] - b[2] * 0.12, b[1] - b[2] * 0.12, b[2] * 0.8, 0, TAU);
+        ctx.fill();
+        // Ribs
+        ctx.strokeStyle = shadeHex(base, 0.3);
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.6;
+        for (let k = 0; k < 6; k++) {
+            const a = (k / 6) * Math.PI;
+            ctx.beginPath();
+            ctx.moveTo(b[0] + Math.cos(a) * b[2] * 0.8, b[1] + Math.sin(a) * b[2] * 0.8);
+            ctx.lineTo(b[0] - Math.cos(a) * b[2] * 0.8, b[1] - Math.sin(a) * b[2] * 0.8);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+    if (d.v > 0.4) {
+        ctx.fillStyle = th.berry || '#ff6fa8';
+        ctx.beginPath();
+        ctx.arc(-R * 0.1, -R * 0.1, R * 0.2, 0, TAU);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 // Canopies go into their own layer so they draw above the riders.
 function paintTree(ctx, d, th, rnd, scale) {
+    if (th.tree === 'rock') {
+        // No trees in this theme: a tall boulder or stone column stands in.
+        paintRock(ctx, { x: d.x, y: d.y, r: d.r * 1.15, v: d.v, type: 'rock' }, th, rnd);
+        return;
+    }
+    if (th.tree === 'palm') {
+        paintPalm(ctx, d, th, rnd, scale);
+        return;
+    }
+    if (th.tree === 'cactus') {
+        paintCactus(ctx, d, th, rnd, scale);
+        return;
+    }
+    const snowy = th.tree === 'snowpine';
     const R = d.r * 1.12;
     const cols = th.foliage;
     const idx = Math.min(cols.length - 1, Math.floor(d.v * cols.length));
     const base = cols[idx];
     ctx.save();
     ctx.translate(d.x, d.y);
-    const conifer = th.key === 'pine' && d.v < 0.8;
+    const conifer = snowy || (th.tree === 'conifer' && d.v < 0.8);
     // Soft shadow cast on the ground and on anything under the tree
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.38)';
@@ -630,10 +1009,10 @@ function paintTree(ctx, d, th, rnd, scale) {
                 else ctx.lineTo(x, y);
             }
             ctx.closePath();
-            ctx.fillStyle = shadeHex(base, tone);
+            ctx.fillStyle = snowy && layer >= 2 ? (layer === 2 ? '#dfe9f0' : '#ffffff') : shadeHex(snowy ? cols[0] : base, tone);
             ctx.fill();
         }
-        ctx.fillStyle = shadeHex(base, 0.35);
+        ctx.fillStyle = snowy ? '#ffffff' : shadeHex(base, 0.35);
         ctx.beginPath();
         ctx.arc(-R * 0.1, -R * 0.12, R * 0.12, 0, TAU);
         ctx.fill();
