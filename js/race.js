@@ -54,6 +54,8 @@ export function createRace(track) {
     const step0 = track.step || (track.length / n) || 12;
     const width = track.width;
     const half = width / 2;
+    // Local half width per sample. Older track data without hw uses the nominal width.
+    const hwArr = track.hw || new Float32Array(n).fill(half);
     const laps = track.laps;
     const aiPace = track.aiPace || 1;
     const rr = phys.riderRadius;
@@ -318,12 +320,12 @@ export function createRace(track) {
             jumpDelta = delta;
         }
 
-        r.offroad = !r.air && Math.abs(off) > half;
+        r.offroad = !r.air && Math.abs(off) > hwArr[bestI];
         const side = bermReal[bestI];
         r.onBerm = !r.air && !r.offroad && side !== 0 && off * side > 4;
 
         // Jump take off when the lip is crossed forwards on the track and on the ground.
-        if (jumpDelta > 0 && !r.air && Math.abs(off) <= half && track.jumps) {
+        if (jumpDelta > 0 && !r.air && Math.abs(off) <= hwArr[bestI] && track.jumps) {
             for (let j = 0; j < track.jumps.length; j++) {
                 const d = wrapIdx(track.jumps[j].i - prevSf);
                 if (d > 0 && d <= jumpDelta) {
@@ -397,11 +399,14 @@ export function createRace(track) {
         if (lost) look = Math.max(40, look * 0.6);
 
         // Wanted lane
-        let want = ai.lane * width;
-        if (mode === 'finished') want = (ai.lane >= 0 ? 1 : -1) * width * 0.34;
         const ahead = Math.floor(wrapIdx(e.sf + (look * 0.8) / step0));
+        // Lanes scale with the local width: the narrower of here and the aim point.
+        const halfL = Math.min(hwArr[ahead], hwArr[e.idx]);
+        const widthL = halfL * 2;
+        let want = ai.lane * widthL;
+        if (mode === 'finished') want = (ai.lane >= 0 ? 1 : -1) * widthL * 0.34;
         const bs = bermAi[ahead];
-        if (bs !== 0 && mode !== 'finished') want = bs * width * 0.27;
+        if (bs !== 0 && mode !== 'finished') want = bs * widthL * 0.27;
 
         if (mode === 'race') {
             // Take a boost pickup that lies ahead and is not far from the wanted lane.
@@ -430,14 +435,14 @@ export function createRace(track) {
             if (fwdDot < -5 || dd > look * 1.8 + 70) continue;
             const ho = lateralAt(h.x, h.y, Math.floor(e.sf), Math.ceil((dd + 40) / step0));
             if (Math.abs(ho - want) < 52) {
-                const lim = half - 20;
+                const lim = halfL - 20;
                 const a = clamp(ho + 52, -lim, lim);
                 const b = clamp(ho - 52, -lim, lim);
                 want = Math.abs(a - ho) >= Math.abs(b - ho) ? a : b;
             }
         }
 
-        const lim = half - 20;
+        const lim = halfL - 20;
         want = clamp(want, -lim, lim);
         if (lost) want = 0;
         const maxD = width * AI_LANE_RATE * dt;
@@ -496,6 +501,45 @@ export function createRace(track) {
     }
 
     // Rider physics -------------------------------------------------------------------
+
+    // Soft barrier along both track edges: a rider may run wide by edgeAllow units past the
+    // local edge, then is pushed back, bounces a little and loses some speed.
+    function fence(i) {
+        const r = racers[i];
+        const i0 = ext[i].idx;
+        let best = Infinity;
+        let bi = i0;
+        for (let k = -6; k <= 6; k++) {
+            let idx = i0 + k;
+            if (idx < 0) idx += n;
+            else if (idx >= n) idx -= n;
+            const ddx = r.x - px[idx];
+            const ddy = r.y - py[idx];
+            const d = ddx * ddx + ddy * ddy;
+            if (d < best) {
+                best = d;
+                bi = idx;
+            }
+        }
+        const off = (r.x - px[bi]) * nx[bi] + (r.y - py[bi]) * ny[bi];
+        const limit = hwArr[bi] + phys.edgeAllow;
+        if (Math.abs(off) > limit) {
+            const sgn = off > 0 ? 1 : -1;
+            const over = Math.abs(off) - limit;
+            r.x -= nx[bi] * sgn * over;
+            r.y -= ny[bi] * sgn * over;
+            const vn = (r.vx * nx[bi] + r.vy * ny[bi]) * sgn;
+            if (vn > 0) {
+                const k = vn * (1 + phys.edgeBounce);
+                r.vx -= nx[bi] * sgn * k;
+                r.vy -= ny[bi] * sgn * k;
+                if (vn > 25) {
+                    r.vx *= phys.edgeSlow;
+                    r.vy *= phys.edgeSlow;
+                }
+            }
+        }
+    }
 
     function moveRider(i, steerIn, pedal, brake, dt) {
         const r = racers[i];
@@ -588,43 +632,7 @@ export function createRace(track) {
             r.y += r.vy * dt;
         }
 
-        // Soft barrier along both track edges: a rider may run wide by edgeAllow units,
-        // then is pushed back, bounces a little and loses some speed.
-        {
-            const i0 = ext[i].idx;
-            let best = Infinity;
-            let bi = i0;
-            for (let k = -6; k <= 6; k++) {
-                let idx = i0 + k;
-                if (idx < 0) idx += n;
-                else if (idx >= n) idx -= n;
-                const ddx = r.x - px[idx];
-                const ddy = r.y - py[idx];
-                const d = ddx * ddx + ddy * ddy;
-                if (d < best) {
-                    best = d;
-                    bi = idx;
-                }
-            }
-            const off = (r.x - px[bi]) * nx[bi] + (r.y - py[bi]) * ny[bi];
-            const limit = half + phys.edgeAllow;
-            if (Math.abs(off) > limit) {
-                const sgn = off > 0 ? 1 : -1;
-                const over = Math.abs(off) - limit;
-                r.x -= nx[bi] * sgn * over;
-                r.y -= ny[bi] * sgn * over;
-                const vn = (r.vx * nx[bi] + r.vy * ny[bi]) * sgn;
-                if (vn > 0) {
-                    const k = vn * (1 + phys.edgeBounce);
-                    r.vx -= nx[bi] * sgn * k;
-                    r.vy -= ny[bi] * sgn * k;
-                    if (vn > 25) {
-                        r.vx *= phys.edgeSlow;
-                        r.vy *= phys.edgeSlow;
-                    }
-                }
-            }
-        }
+        fence(i);
 
         // Keep the rider inside the world box.
         const maxX = world.w - rr;
@@ -828,6 +836,11 @@ export function createRace(track) {
         }
 
         collide(dt);
+        // Riders can shove each other wide, so apply the edge barrier once more.
+        for (let i = 0; i < racers.length; i++) {
+            fence(i);
+            racers[i].speed = Math.hypot(racers[i].vx, racers[i].vy);
+        }
         if (racing) {
             for (let i = 0; i < racers.length; i++) pickupsAndHazards(i, dt);
             rank();

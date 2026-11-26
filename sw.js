@@ -1,6 +1,6 @@
 // Track Day Racer: offline cache.
 //
-// DEVELOPERS: bump CACHE_NAME (trailbadger-racer-v5, v3 ...) on every release so players get the
+// DEVELOPERS: bump CACHE_NAME (trailbadger-racer-v6, v3 ...) on every release so players get the
 // new files, and add every new game file to FILES below. A file that is not listed is never
 // cached and the game will not work offline. The tasks/ folder is not part of the game.
 //
@@ -9,7 +9,7 @@
 // any file fails to download, install fails, the old worker (if any) stays in charge, and the
 // game keeps running from the network. The browser retries on a later visit.
 
-const CACHE_NAME = 'trailbadger-racer-v5';
+const CACHE_NAME = 'trailbadger-racer-v6';
 const CACHE_PREFIX = 'trailbadger-racer-';
 
 const FILES = [

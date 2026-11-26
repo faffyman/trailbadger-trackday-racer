@@ -9,7 +9,7 @@
 export const CONFIG = {
     title: 'Track Day Racer',
     storageKey: 'trailbadger-racer',
-    cacheName: 'trailbadger-racer-v5',
+    cacheName: 'trailbadger-racer-v6',
 
     world: { w: 1600, h: 900 },
     fixedDt: 1 / 60,
@@ -24,8 +24,8 @@ export const CONFIG = {
         sampleStep: 12,       // target distance between centreline samples
         margin: 46,           // gap kept between the outer track edge and the world edge
         widthIntro: 116,
-        widthMin: 96,
-        widthMax: 110,
+        widthMin: 104,
+        widthMax: 120,
         lapsIntro: 6,
         lapsDaily: 6,
         minRadiusFactor: 0.75,  // min centreline radius of curvature = width * factor
@@ -110,7 +110,9 @@ export const CONFIG = {
  * @property {number} laps
  * @property {number} aiPace        multiplier for AI max speed (intro-1 0.80, intro-2 0.90, daily 0.95 to 1.02)
  * @property {Object} theme         one entry of CONFIG.themes
- * @property {number} width         full track width
+ * @property {number} width         nominal full track width (the local width varies, see hw)
+ * @property {Float32Array} hw    half of the local track width at each sample
+ * @property {string} family       layout family, for example 'ring', 'comb', 'snake', 'side'
  * @property {number} n             number of centreline samples
  * @property {number} length        lap length in units
  * @property {number} step          length / n

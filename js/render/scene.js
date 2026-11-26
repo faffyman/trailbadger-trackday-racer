@@ -62,8 +62,44 @@ function offsetLoop(ctx, t, off) {
     ctx.closePath();
 }
 
-function strokeLoop(ctx, t, off, width, color, alpha) {
-    offsetLoop(ctx, t, off);
+// Half of the local track width at sample i.
+function hwAt(t, i) {
+    return t.hw ? t.hw[i] : t.width / 2;
+}
+
+// Fill a band that follows the local track width: half extent = local half width * scale + extra / 2.
+// One path of quads, so the band has even alpha and no seams.
+function ribbon(ctx, t, scale, extra, color, alpha) {
+    const n = t.n;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+        const j = i + 1 === n ? 0 : i + 1;
+        const a = hwAt(t, i) * scale + extra / 2;
+        const b = hwAt(t, j) * scale + extra / 2;
+        ctx.moveTo(t.px[i] - t.nx[i] * a, t.py[i] - t.ny[i] * a);
+        ctx.lineTo(t.px[j] - t.nx[j] * b, t.py[j] - t.ny[j] * b);
+        ctx.lineTo(t.px[j] + t.nx[j] * b, t.py[j] + t.ny[j] * b);
+        ctx.lineTo(t.px[i] + t.nx[i] * a, t.py[i] + t.ny[i] * a);
+        ctx.closePath();
+    }
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+}
+
+// Stroke a line that runs `inset` units inside one edge of the track (side is 1 or -1).
+function edgeLine(ctx, t, side, inset, width, color, alpha) {
+    const n = t.n;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+        const off = side * (hwAt(t, i) - inset);
+        const x = t.px[i] + t.nx[i] * off;
+        const y = t.py[i] + t.ny[i] * off;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
     ctx.lineWidth = width;
     ctx.strokeStyle = color;
     ctx.globalAlpha = alpha;
@@ -138,27 +174,26 @@ function paintGround(ctx, t, rnd) {
 
 function paintTrack(ctx, t, rnd) {
     const th = t.theme;
-    const w = t.width;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
     // Worn grass fringe fades into the dirt
-    const fringe = [[w + 62, 0.05], [w + 46, 0.07], [w + 32, 0.1], [w + 20, 0.16]];
-    for (let i = 0; i < fringe.length; i++) strokeLoop(ctx, t, 0, fringe[i][0], th.dirt, fringe[i][1]);
+    const fringe = [[62, 0.05], [46, 0.07], [32, 0.1], [20, 0.16]];
+    for (let i = 0; i < fringe.length; i++) ribbon(ctx, t, 1, fringe[i][0], th.dirt, fringe[i][1]);
 
     // Soft shadow of the cut, then the dark edge, then the dirt
-    strokeLoop(ctx, t, 0, w + 14, '#000000', 0.18);
-    strokeLoop(ctx, t, 0, w + 9, th.edge, 1);
-    strokeLoop(ctx, t, 0, w + 3, shadeHex(th.dirtDark, -0.05), 1);
-    strokeLoop(ctx, t, 0, w, th.dirt, 1);
-    strokeLoop(ctx, t, 0, w * 0.74, shadeHex(th.dirt, 0.1), 0.55);
-    strokeLoop(ctx, t, 0, w * 0.4, shadeHex(th.dirt, 0.14), 0.35);
+    ribbon(ctx, t, 1, 14, '#000000', 0.18);
+    ribbon(ctx, t, 1, 9, th.edge, 1);
+    ribbon(ctx, t, 1, 3, shadeHex(th.dirtDark, -0.05), 1);
+    ribbon(ctx, t, 1, 0, th.dirt, 1);
+    ribbon(ctx, t, 0.74, 0, shadeHex(th.dirt, 0.1), 0.55);
+    ribbon(ctx, t, 0.4, 0, shadeHex(th.dirt, 0.14), 0.35);
 
     // Mottled patches and pebbles
     const n = t.n;
     for (let i = 0; i < n; i++) {
         for (let k = 0; k < 3; k++) {
-            const off = (rnd() - 0.5) * w * 0.94;
+            const off = (rnd() - 0.5) * 2 * hwAt(t, i) * 0.94;
             const x = t.px[i] + t.nx[i] * off + (rnd() - 0.5) * 8;
             const y = t.py[i] + t.ny[i] * off + (rnd() - 0.5) * 8;
             const dark = rnd() > 0.45;
@@ -169,7 +204,7 @@ function paintTrack(ctx, t, rnd) {
             ctx.fill();
         }
         if (i % 2 === 0) {
-            const off = (rnd() - 0.5) * w * 0.96;
+            const off = (rnd() - 0.5) * 2 * hwAt(t, i) * 0.96;
             ctx.globalAlpha = 0.55;
             ctx.fillStyle = rnd() > 0.5 ? shadeHex(th.dirt, 0.3) : shadeHex(th.dirtDark, -0.2);
             ctx.beginPath();
@@ -183,10 +218,10 @@ function paintTrack(ctx, t, rnd) {
     const bases = [-0.27, -0.09, 0.1, 0.28];
     for (let b = 0; b < bases.length; b++) {
         const ph = rnd() * TAU;
-        const base = bases[b] * w;
+        const base = bases[b] * 2;
         ctx.beginPath();
         for (let i = 0; i < n; i++) {
-            const off = base + Math.sin(i * 0.05 + ph) * 5 + Math.sin(i * 0.13 + ph * 2) * 2;
+            const off = base * hwAt(t, i) + Math.sin(i * 0.05 + ph) * 5 + Math.sin(i * 0.13 + ph * 2) * 2;
             const x = t.px[i] + t.nx[i] * off;
             const y = t.py[i] + t.ny[i] * off;
             if (i === 0) ctx.moveTo(x, y);
@@ -207,10 +242,10 @@ function paintTrack(ctx, t, rnd) {
     ctx.globalAlpha = 1;
 
     // Crisp inner edge lines
-    strokeLoop(ctx, t, w / 2 - 1, 2.6, th.edge, 0.5);
-    strokeLoop(ctx, t, -w / 2 + 1, 2.6, th.edge, 0.5);
-    strokeLoop(ctx, t, w / 2 - 4, 1.6, shadeHex(th.dirt, 0.3), 0.3);
-    strokeLoop(ctx, t, -w / 2 + 4, 1.6, shadeHex(th.dirt, 0.3), 0.3);
+    edgeLine(ctx, t, 1, 1, 2.6, th.edge, 0.5);
+    edgeLine(ctx, t, -1, 1, 2.6, th.edge, 0.5);
+    edgeLine(ctx, t, 1, 4, 1.6, shadeHex(th.dirt, 0.3), 0.3);
+    edgeLine(ctx, t, -1, 4, 1.6, shadeHex(th.dirt, 0.3), 0.3);
 
     // Painted direction chevrons, very faint
     const every = Math.max(8, Math.round(300 / t.step));
@@ -239,23 +274,24 @@ function paintTrack(ctx, t, rnd) {
 // Banked berms: lit and shaded per sample so the bank reads as raised from the light direction.
 function paintBerms(ctx, t) {
     const th = t.theme;
-    const hw = t.width / 2;
     const base = th.berm;
-    // Offsets (distance from the centreline towards the outer side) and tone of each strip.
-    // Rising slope, crest, then the outer drop.
-    const toe = hw * 0.1;
-    const prof = [];
     const rise = 6;
-    for (let q = 0; q <= rise; q++) {
-        const p = q / rise;
-        prof.push({ m: toe + (hw * 0.86 - toe) * p, tone: -0.3 + 0.5 * p, slope: 1 });
-    }
-    prof.push({ m: hw - 5, tone: 0.3, slope: 0 });
-    prof.push({ m: hw + 3, tone: -0.1, slope: -1 });
-    prof.push({ m: hw + 13, tone: -0.4, slope: -1 });
-    const outerM = prof[prof.length - 1].m;
     for (let b = 0; b < t.berms.length; b++) {
         const br = t.berms[b];
+        // Width is constant along a berm, so the middle sample gives it.
+        const hw = hwAt(t, (br.from + br.to) >> 1);
+        // Offsets (distance from the centreline towards the outer side) and tone of each strip.
+        // Rising slope, crest, then the outer drop.
+        const toe = hw * 0.1;
+        const prof = [];
+        for (let q = 0; q <= rise; q++) {
+            const p = q / rise;
+            prof.push({ m: toe + (hw * 0.86 - toe) * p, tone: -0.3 + 0.5 * p, slope: 1 });
+        }
+        prof.push({ m: hw - 5, tone: 0.3, slope: 0 });
+        prof.push({ m: hw + 3, tone: -0.1, slope: -1 });
+        prof.push({ m: hw + 13, tone: -0.4, slope: -1 });
+        const outerM = prof[prof.length - 1].m;
         const side = br.side;
         const from = br.from;
         const to = br.to;
@@ -335,10 +371,10 @@ function paintBerms(ctx, t) {
 
 function paintJumps(ctx, t) {
     const th = t.theme;
-    const hw = t.width / 2 - 3;
     const len = 44;
     for (let j = 0; j < t.jumps.length; j++) {
         const i = t.jumps[j].i;
+        const hw = hwAt(t, i) - 3;
         const a = Math.atan2(t.ty[i], t.tx[i]);
         ctx.save();
         ctx.translate(t.px[i], t.py[i]);
@@ -411,7 +447,7 @@ function paintJumps(ctx, t) {
 }
 
 function paintStart(ctx, t) {
-    const w = t.width;
+    const w = 2 * hwAt(t, 0);
     const a = Math.atan2(t.ty[0], t.tx[0]);
     ctx.save();
     ctx.translate(t.px[0], t.py[0]);
@@ -450,7 +486,7 @@ function paintStart(ctx, t) {
 }
 
 function paintStartPosts(ctx, t, shadowOnly) {
-    const w = t.width;
+    const w = 2 * hwAt(t, 0);
     const a = Math.atan2(t.ty[0], t.tx[0]);
     ctx.save();
     ctx.translate(t.px[0], t.py[0]);
@@ -1523,15 +1559,29 @@ export function drawTrackThumb(canvas, track) {
     };
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    const lw = Math.max(2.5, tw * sc);
-    path();
-    ctx.lineWidth = lw + 3;
-    ctx.strokeStyle = th.edge;
-    ctx.stroke();
-    path();
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = th.dirt;
-    ctx.stroke();
+    const lw = Math.max(2.5, 2 * hwAt(track, 0) * sc);
+    // The track as a band of quads, so wide and narrow parts show in the preview.
+    const band = (extra, color) => {
+        ctx.beginPath();
+        for (let i = 0; i < n; i += stride) {
+            const j = i + stride >= n ? 0 : i + stride;
+            const a = Math.max(1.25, hwAt(track, i) * sc) + extra;
+            const b = Math.max(1.25, hwAt(track, j) * sc) + extra;
+            const xi = track.px[i] * sc + offX;
+            const yi = track.py[i] * sc + offY;
+            const xj = track.px[j] * sc + offX;
+            const yj = track.py[j] * sc + offY;
+            ctx.moveTo(xi - track.nx[i] * a, yi - track.ny[i] * a);
+            ctx.lineTo(xj - track.nx[j] * b, yj - track.ny[j] * b);
+            ctx.lineTo(xj + track.nx[j] * b, yj + track.ny[j] * b);
+            ctx.lineTo(xi + track.nx[i] * a, yi + track.ny[i] * a);
+            ctx.closePath();
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
+    };
+    band(1.5, th.edge);
+    band(0, th.dirt);
     path();
     ctx.lineWidth = Math.max(1, lw * 0.28);
     ctx.strokeStyle = shadeHex(th.dirt, 0.3);

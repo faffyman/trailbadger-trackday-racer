@@ -73,34 +73,26 @@ export function listTracks(today = new Date())
 The generator works like the galaxy generator in Elite: nothing is stored, the id is hashed to
 a seed, and every property comes from the seeded random stream in a fixed order.
 
-Suggested method (you may improve it, but the result must pass the checks below):
+Method as built (2026-11-26):
 
-1. `seed = hashString(id)`, `rnd = makeRng(seed)`.
-2. Closed centreline in polar form around the world centre. Radius
-   `R(a) = 1 + sum(k = 2..K) amp_k * sin(k * a + phase_k)` with amplitudes that fall with k,
-   plus a small monotone warp of the angle. Scale x and y separately so that the outer track
-   edge fills the world box minus `CONFIG.track.margin`.
-3. Resample to evenly spaced points (`CONFIG.track.sampleStep` apart), compute tangents,
-   right-hand normals and signed curvature (smooth the curvature a little).
-4. Validate: minimum radius of curvature >= width * minRadiusFactor, and any two centreline
-   points that are far apart along the lap (more than 3 widths of arc) are at least
-   width * minGapFactor apart in space. On failure retry with the next sub-seed and slightly
-   lower amplitudes. After 40 failed tries fall back to a plain ellipse. Always terminates.
-5. Direction of travel (clockwise or anticlockwise) from the seed.
-6. Rotate the sample order so that sample 0 (start and finish line) sits in the middle of the
-   longest straight-ish run.
-7. Features, all from the seed:
-   - berms: the strongest bends (runs of at least 8 samples above bermCurvature), at most 4.
-     `side` is the outer side: a bend to the right (curv > 0) has side -1.
-   - jumps: 1 to 3, on straight runs (below straightCurvature for 14 or more samples), not
-     within 14 samples of sample 0 and not inside a berm.
-   - pickupSpots: 5 to 7, spread around the lap, lateral offset within 0.3 * width, at least
-     8 samples from a jump and 16 samples from sample 0. At least 2 boost and 1 hazard.
-   - decor: 70 to 110 trees, bushes and rocks, none closer to the centreline than
-     width / 2 + r + 14, all inside the world.
-   - grid: 4 slots in a staggered 2 x 2 behind sample 0, facing along the tangent.
-   - theme from CONFIG.themes, name from two seeded word lists (woodland flavour, for
-     example "Bracken Hollow", "Conker Switchback").
+1. `seed = hashString(id)`. A base stream sets direction, theme, name, nominal width, pace,
+   feature counts and the layout family.
+2. Layout family, from the seed. `ring` is a rounded rectangle with dents. The others start
+   from a folded outline of corner points in the unit square: `comb` (one tongue of infield),
+   `comb2` (two tongues), `snake` (one tongue from the top, one from the bottom), `side`
+   (three long parallel straights), `cross` (plus shape), `tee`, `step`. The outline is
+   mirrored and nudged from the seed, some long edges get a kink, and the corners are rounded
+   by repeated neighbour averaging. Each try has its own sub-seed and smaller folds.
+3. Resample evenly, compute tangents, right-hand normals and curvature. Validate minimum
+   radius, self distance, a start straight and (dailies) enough bends. After 40 failed tries
+   fall back to a plain ellipse.
+4. Local width: `track.hw` holds half of the track width at every sample. Dailies get a wide
+   start straight, one to three narrow pinch points on straights and one or two wide zones.
+   The width is capped so the track stays in the world, never folds inside a bend and keeps
+   at least 50 units of grass to any other part of the lap. Width is constant along a berm.
+   `track.width` is the nominal width. Race and renderer use `hw` everywhere.
+5. Features (berms, jumps, pickups, decor, grid) come from their own stream, as before. Jumps
+   avoid pinch points.
 8. Intro tracks use the same generator with gentle settings:
    - `intro-1`: "First Ride" style: near oval (K = 2, low amplitude), width widthIntro,
      1 jump, 5 pickups, all boost, 1 or 2 berms, aiPace 0.80, lapsIntro laps.

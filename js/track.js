@@ -11,7 +11,8 @@ const TAU = Math.PI * 2;
 const MAX_TRIES = 40;
 const DENSE = 360;          // points on the raw closed curve before resampling
 const RELAX_LIMIT = 0.8;    // corners are rounded off beyond this fraction of the tightest allowed curvature
-const MIN_START_RUN = 22;   // samples of near-straight track needed around the start line
+const MIN_START_RUN = 22;
+const FAMILIES = ['ring', 'comb', 'comb2', 'snake', 'side', 'cross', 'tee', 'step'];   // samples of near-straight track needed around the start line
 
 const NAME_A = ['Bracken', 'Conker', 'Hazel', 'Fernwood', 'Acorn', 'Thistle', 'Mossy', 'Bramble',
     'Willow', 'Ember', 'Foxglove', 'Dappled', 'Hawthorn', 'Sorrel', 'Mistle', 'Birch'];
@@ -90,8 +91,16 @@ function makeProfile(id, base) {
         pickupKinds: null,
         features: 3 + Math.floor(kRoll * 3),
         method: 'features',
-        lively: true
+        lively: true,
+        varyWidth: true,
+        family: 'ring'
     };
+    // Layout family. The ring is the original rounded rectangle with dents; the others are
+    // folded outlines that reach into the middle of the screen.
+    profile.family = FAMILIES[Math.floor(base() * FAMILIES.length)];
+    if (profile.family !== 'ring') profile.method = 'outline';
+    // Three hairpins share the screen height in the side layout, so it cannot be very wide.
+    if (profile.family === 'side') profile.width = Math.min(profile.width, 110);
 
     if (id === 'intro-1') {
         profile.kind = 'intro';
@@ -109,6 +118,8 @@ function makeProfile(id, base) {
         profile.pickupKinds = ['boost', 'boost', 'boost', 'boost', 'boost'];
         profile.method = 'polar';
         profile.lively = false;
+        profile.varyWidth = false;
+        profile.family = 'oval';
     } else if (id === 'intro-2') {
         profile.kind = 'intro';
         profile.name = 'Acorn Twister';
@@ -125,6 +136,8 @@ function makeProfile(id, base) {
         profile.pickupKinds = ['boost', 'boost', 'boost', 'boost', 'mud', 'bramble'];
         profile.method = 'polar';
         profile.lively = false;
+        profile.varyWidth = false;
+        profile.family = 'oval';
     }
     return profile;
 }
@@ -299,6 +312,143 @@ function featureCurve(rng, profile, ampScale) {
         }
         xs[i] = bx[i] + nx * shift;
         ys[i] = by[i] + ny * shift;
+    }
+    fitToWorld(xs, ys, profile.width);
+    relaxCorners(xs, ys, RELAX_LIMIT / (profile.width * CONFIG.track.minRadiusFactor));
+    fitToWorld(xs, ys, profile.width);
+    return { xs, ys };
+}
+
+/**
+ * Corner points of a folded outline in unit square coordinates (clockwise on screen).
+ * `s` shrinks the folds on later tries so that a valid shape is always found.
+ */
+function familyOutline(family, rng, s) {
+    const j = (v, a) => v + (rng() * 2 - 1) * a;
+    const deep = (lo, hi) => (lo + (hi - lo) * rng()) * (0.6 + 0.4 * s);
+    if (family === 'comb') {
+        // One tongue of infield pushed up from the bottom edge.
+        const a = j(0.39, 0.04);
+        const b = j(0.61, 0.04);
+        const d = deep(0.5, 0.7);
+        return [[0, 0], [1, 0], [1, 1], [b, 1], [b, 1 - d], [a, 1 - d], [a, 1], [0, 1]];
+    }
+    if (family === 'comb2') {
+        // Two tongues from the bottom: five parallel legs.
+        const a1 = j(0.2, 0.025);
+        const b1 = j(0.4, 0.025);
+        const a2 = j(0.6, 0.025);
+        const b2 = j(0.8, 0.025);
+        const d1 = deep(0.45, 0.7);
+        const d2 = deep(0.45, 0.7);
+        return [[0, 0], [1, 0], [1, 1], [b2, 1], [b2, 1 - d2], [a2, 1 - d2], [a2, 1],
+            [b1, 1], [b1, 1 - d1], [a1, 1 - d1], [a1, 1], [0, 1]];
+    }
+    if (family === 'snake') {
+        // One tongue from the top and one from the bottom: a serpentine.
+        const a1 = j(0.2, 0.025);
+        const b1 = j(0.4, 0.025);
+        const a2 = j(0.6, 0.025);
+        const b2 = j(0.8, 0.025);
+        const d1 = deep(0.48, 0.7);
+        const d2 = deep(0.48, 0.7);
+        return [[0, 0], [a1, 0], [a1, d1], [b1, d1], [b1, 0], [1, 0], [1, 1],
+            [b2, 1], [b2, 1 - d2], [a2, 1 - d2], [a2, 1], [0, 1]];
+    }
+    if (family === 'side') {
+        // A long tongue from the right edge: three long parallel straights.
+        const a = j(0.333, 0.008);
+        const b = j(0.667, 0.008);
+        const d = deep(0.55, 0.8);
+        return [[0, 0], [1, 0], [1, a], [1 - d, a], [1 - d, b], [1, b], [1, 1], [0, 1]];
+    }
+    if (family === 'cross') {
+        // A plus shape: four arms, each one a hairpin.
+        const a = j(0.3, 0.02);
+        const b = j(0.7, 0.02);
+        const c = j(0.3, 0.02);
+        const d = j(0.7, 0.02);
+        return [[a, 0], [b, 0], [b, c], [1, c], [1, d], [b, d], [b, 1], [a, 1], [a, d], [0, d], [0, c], [a, c]];
+    }
+    if (family === 'tee') {
+        const a = j(0.33, 0.03);
+        const b = j(0.67, 0.03);
+        const c = j(0.5, 0.05);
+        return [[0, 0], [1, 0], [1, c], [b, c], [b, 1], [a, 1], [a, c], [0, c]];
+    }
+    // step: two offset blocks joined in the middle
+    const u1 = j(0.6, 0.03);
+    const u2 = j(0.4, 0.03);
+    const v1 = j(0.44, 0.02);
+    const v2 = j(0.56, 0.02);
+    return [[0, 0], [u1, 0], [u1, v1], [1, v1], [1, 1], [u2, 1], [u2, v2], [0, v2]];
+}
+
+/**
+ * Daily shape from a folded outline: take the corner points of the family, mirror and nudge
+ * them from the seed, add a kink to some long edges, then round everything off by repeated
+ * neighbour averaging. The result reaches into the middle of the screen with hairpins and
+ * long parallel straights.
+ */
+function outlineCurve(rng, profile, ampScale) {
+    const inset = CONFIG.track.margin + profile.width / 2;
+    const bw = CONFIG.world.w - 2 * inset;
+    const bh = CONFIG.world.h - 2 * inset;
+    const pts = familyOutline(profile.family, rng, ampScale);
+    const flipX = rng() < 0.5;
+    const flipY = rng() < 0.5;
+    const sigma = 62 + 24 * rng();
+    const corners = [];
+    for (const p of pts) {
+        const u = (flipX ? 1 - p[0] : p[0]) + (rng() * 2 - 1) * 0.012 * ampScale;
+        const v = (flipY ? 1 - p[1] : p[1]) + (rng() * 2 - 1) * 0.016 * ampScale;
+        corners.push([inset + u * bw, inset + v * bh]);
+    }
+    // Kinks on long edges.
+    const poly = [];
+    for (let i = 0; i < corners.length; i++) {
+        const a = corners[i];
+        const b = corners[(i + 1) % corners.length];
+        poly.push(a);
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const roll = rng();
+        const at = 0.35 + 0.3 * rng();
+        const push = (35 + 45 * rng()) * ampScale * (rng() < 0.5 ? -1 : 1);
+        if (len > 520 && roll < 0.45) {
+            const ex = (b[0] - a[0]) / len;
+            const ey = (b[1] - a[1]) / len;
+            poly.push([a[0] + (b[0] - a[0]) * at - ey * push, a[1] + (b[1] - a[1]) * at + ex * push]);
+        }
+    }
+    // Dense polyline, about 8 units between points.
+    const dx = [];
+    const dy = [];
+    for (let i = 0; i < poly.length; i++) {
+        const a = poly[i];
+        const b = poly[(i + 1) % poly.length];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const parts = Math.max(1, Math.round(len / 8));
+        for (let k = 0; k < parts; k++) {
+            dx.push(a[0] + ((b[0] - a[0]) * k) / parts);
+            dy.push(a[1] + ((b[1] - a[1]) * k) / parts);
+        }
+    }
+    let xs = Float64Array.from(dx);
+    let ys = Float64Array.from(dy);
+    const m = xs.length;
+    // Each pass of the (1/4, 1/2, 1/4) average adds 32 square units of blur at this spacing.
+    const passes = Math.round((sigma * sigma) / 32);
+    let nx2 = new Float64Array(m);
+    let ny2 = new Float64Array(m);
+    for (let pass = 0; pass < passes; pass++) {
+        for (let i = 0; i < m; i++) {
+            const a = i === 0 ? m - 1 : i - 1;
+            const b = i === m - 1 ? 0 : i + 1;
+            nx2[i] = 0.25 * xs[a] + 0.5 * xs[i] + 0.25 * xs[b];
+            ny2[i] = 0.25 * ys[a] + 0.5 * ys[i] + 0.25 * ys[b];
+        }
+        let t = xs; xs = nx2; nx2 = t;
+        t = ys; ys = ny2; ny2 = t;
     }
     fitToWorld(xs, ys, profile.width);
     relaxCorners(xs, ys, RELAX_LIMIT / (profile.width * CONFIG.track.minRadiusFactor));
@@ -579,6 +729,88 @@ function findBerms(line, wanted) {
         .map((r) => ({ from: r.from, to: r.to, side: r.side }));
 }
 
+/**
+ * Half width of the track at every sample. Dailies get a wide start straight, one to three
+ * narrow pinch points on straights and one or two wide zones. The result is then capped so
+ * the track stays inside the world, never folds on the inside of a bend and never comes too
+ * close to another part of the lap. Width is constant along a berm. Returns null when a part
+ * of the lap has no room for a usable width.
+ */
+function makeWidths(line, profile, berms, rng) {
+    const { n, px, py, curv, step } = line;
+    const base = profile.width / 2;
+    const f = new Float64Array(n).fill(1);
+    const zones = [];
+    if (profile.varyWidth) {
+        zones.push({ c: 0, len: 16, k: 0.16 });
+        const pinches = 1 + Math.floor(rng() * 3);
+        const wides = 1 + Math.floor(rng() * 2);
+        const far = (i, gap) => zones.every((z) => circDist(z.c, i, n) > z.len + gap);
+        for (let q = 0; q < pinches; q++) {
+            const k = -(0.2 + 0.08 * rng());
+            const len = 9 + Math.floor(rng() * 5);
+            for (let tries = 0; tries < 30; tries++) {
+                const i = Math.floor(rng() * n);
+                if (Math.abs(curv[i]) > 1 / 600 || inBerm(berms, i, 6) || !far(i, len + 8)) continue;
+                zones.push({ c: i, len, k });
+                break;
+            }
+        }
+        for (let q = 0; q < wides; q++) {
+            const k = 0.22 + 0.13 * rng();
+            const len = 14 + Math.floor(rng() * 9);
+            for (let tries = 0; tries < 30; tries++) {
+                const i = Math.floor(rng() * n);
+                if (!far(i, len + 8)) continue;
+                zones.push({ c: i, len, k });
+                break;
+            }
+        }
+    }
+    for (const z of zones) {
+        for (let d = -z.len; d <= z.len; d++) {
+            const i = (((z.c + d) % n) + n) % n;
+            f[i] += z.k * (0.5 + 0.5 * Math.cos((Math.PI * d) / z.len));
+        }
+    }
+    const hw = new Float64Array(n);
+    const skip = Math.ceil((3 * profile.width) / step);
+    const W = CONFIG.world.w;
+    const H = CONFIG.world.h;
+    for (let i = 0; i < n; i++) {
+        let v = base * f[i];
+        v = Math.min(v, Math.min(px[i], W - px[i], py[i], H - py[i]) - 20);
+        const c = Math.abs(curv[i]);
+        if (c > 0) v = Math.min(v, 0.72 / c);
+        let dmin2 = Infinity;
+        for (let jj = 0; jj < n; jj++) {
+            if (circDist(i, jj, n) <= skip) continue;
+            const ddx = px[jj] - px[i];
+            const ddy = py[jj] - py[i];
+            const d2 = ddx * ddx + ddy * ddy;
+            if (d2 < dmin2) dmin2 = d2;
+        }
+        v = Math.min(v, (Math.sqrt(dmin2) - 50) / 2);
+        if (v < base * 0.7) return null;
+        hw[i] = v;
+    }
+    for (const b of berms) {
+        let m = Infinity;
+        for (let i = b.from - 2; i <= b.to + 2; i++) m = Math.min(m, hw[((i % n) + n) % n]);
+        for (let i = b.from - 2; i <= b.to + 2; i++) hw[((i % n) + n) % n] = m;
+    }
+    // Smooth without ever going above a cap: keep the lower of the value and its average.
+    for (let pass = 0; pass < 8; pass++) {
+        const prev = Float64Array.from(hw);
+        for (let i = 0; i < n; i++) {
+            const avg = 0.25 * prev[(i + n - 1) % n] + 0.5 * prev[i] + 0.25 * prev[(i + 1) % n];
+            if (avg < hw[i]) hw[i] = avg;
+        }
+    }
+    for (let i = 0; i < n; i++) hw[i] = Math.round(hw[i] * 10) / 10;
+    return hw;
+}
+
 function inBerm(berms, i, pad) {
     for (const b of berms) {
         if (i >= b.from - pad && i <= b.to + pad) return true;
@@ -586,7 +818,7 @@ function inBerm(berms, i, pad) {
     return false;
 }
 
-function findJumps(line, rng, berms, wanted) {
+function findJumps(line, rng, berms, wanted, hw, base) {
     const { n, curv } = line;
     const runs = straightRuns(curv, n, CONFIG.track.straightCurvature);
     const cand = [];
@@ -594,6 +826,7 @@ function findJumps(line, rng, berms, wanted) {
         if (runs.runLen[i] < 14) continue;
         if (circDist(i, 0, n) < 14) continue;
         if (inBerm(berms, i, 4)) continue;
+        if (hw[i] < base * 0.97) continue;
         // Keep the lip away from the ends of the straight so the landing is straight too.
         if (runs.before[i] < 4 || runs.after[i] < 4) continue;
         cand.push(i);
@@ -611,7 +844,7 @@ function findJumps(line, rng, berms, wanted) {
     return jumps;
 }
 
-function findPickups(line, rng, profile, jumps) {
+function findPickups(line, rng, profile, jumps, hw) {
     const { n } = line;
     const count = profile.pickups;
     const seg = n / count;
@@ -635,7 +868,7 @@ function findPickups(line, rng, profile, jumps) {
             }
         }
         if (chosen < 0) continue;
-        const off = (offRoll * 2 - 1) * 0.3 * profile.width;
+        const off = (offRoll * 2 - 1) * 0.6 * hw[chosen];
         spots.push({ i: chosen, off: Math.round(off * 10) / 10, type: kinds[k] });
     }
     spots.sort((a, b) => a.i - b.i);
@@ -652,7 +885,7 @@ function makeKinds(rng, count) {
     return shuffle(rng, kinds);
 }
 
-function placeDecor(line, rng, profile) {
+function placeDecor(line, rng, profile, hw) {
     const { n, px, py } = line;
     const target = 70 + Math.floor(rng() * 41);
     const W = CONFIG.world.w;
@@ -667,13 +900,12 @@ function placeDecor(line, rng, profile) {
         const x = r + rng() * (W - 2 * r);
         const y = r + rng() * (H - 2 * r);
         const v = rng();
-        const limit = profile.width / 2 + r + 14 + 1;
-        const limit2 = limit * limit;
         let clear = true;
         for (let i = 0; i < n; i++) {
             const dx = px[i] - x;
             const dy = py[i] - y;
-            if (dx * dx + dy * dy < limit2) {
+            const limit = hw[i] + r + 14 + 1;
+            if (dx * dx + dy * dy < limit * limit) {
                 clear = false;
                 break;
             }
@@ -696,15 +928,15 @@ function placeDecor(line, rng, profile) {
     return decor;
 }
 
-function makeGrid(line, profile) {
+function makeGrid(line, profile, hw) {
     const { n, px, py, tx, ty, nx, ny, step } = line;
     // Staggered 2 x 2: slot 0 front left, 1 behind right, 2 behind left, 3 at the back right.
     const backs = [26, 48, 70, 92];
-    const lat = profile.width * 0.2;
     const grid = [];
     for (let k = 0; k < 4; k++) {
         const i = (n - Math.round(backs[k] / step) + n) % n;
         const side = k % 2 === 0 ? -1 : 1;
+        const lat = hw[i] * 0.4;
         const x = px[i] + nx[i] * lat * side;
         const y = py[i] + ny[i] * lat * side;
         grid.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, angle: Math.atan2(ty[i], tx[i]) });
@@ -719,18 +951,22 @@ function makeGrid(line, profile) {
 function buildFeatures(id, line, profile, strict) {
     const rng = makeRng(hashString(id + '|features'));
     const berms = findBerms(line, profile.berms);
-    const jumps = findJumps(line, rng, berms, profile.jumps);
+    // The widths use their own stream so that adding width zones never moves other features.
+    const hw = makeWidths(line, profile, berms, makeRng(hashString(id + '|width')));
+    if (!hw) return null;
+    const jumps = findJumps(line, rng, berms, profile.jumps, hw, profile.width / 2);
     if (strict) {
-        if (jumps.length < profile.jumps) return null;
+        // The cross has short straights, so one jump is enough there.
+        if (jumps.length < (profile.family === 'cross' ? 1 : profile.jumps)) return null;
         if (berms.length < (profile.kind === 'intro' ? 1 : 2)) return null;
     } else if (jumps.length < 1) {
         return null;
     }
-    const pickupSpots = findPickups(line, rng, profile, jumps);
+    const pickupSpots = findPickups(line, rng, profile, jumps, hw);
     if (pickupSpots.length < Math.min(5, profile.pickups)) return null;
-    const decor = placeDecor(line, rng, profile);
-    const grid = makeGrid(line, profile);
-    return { berms, jumps, pickupSpots, decor, grid };
+    const decor = placeDecor(line, rng, profile, hw);
+    const grid = makeGrid(line, profile, hw);
+    return { berms, jumps, pickupSpots, decor, grid, hw };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -760,6 +996,8 @@ function assemble(id, seed, profile, line, features) {
         nx: toF32(line.nx),
         ny: toF32(line.ny),
         curv: toF32(line.curv),
+        hw: toF32(features.hw),
+        family: profile.family,
         berms: features.berms,
         jumps: features.jumps,
         pickupSpots: features.pickupSpots,
@@ -782,9 +1020,11 @@ export function generateTrackInfo(id) {
     for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
         const rng = makeRng((seed + Math.imul(attempt + 1, 0x9e3779b1)) >>> 0);
         const ampScale = Math.pow(0.94, attempt);
-        const curve = profile.method === 'features'
-            ? featureCurve(rng, profile, ampScale)
-            : polarCurve(rng, profile, ampScale);
+        const curve = profile.method === 'outline'
+            ? outlineCurve(rng, profile, ampScale)
+            : (profile.method === 'features'
+                ? featureCurve(rng, profile, ampScale)
+                : polarCurve(rng, profile, ampScale));
         const line = buildCentreline(curve, profile);
         if (!line) continue;
         const features = buildFeatures(id, line, profile, true);

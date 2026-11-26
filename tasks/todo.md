@@ -46,3 +46,14 @@ Tim played it and said the handling is much better.
 - Brock portrait and app icons use the official head artwork (`assets/img/brock.webp`).
 - Track edge barrier: at most `edgeAllow` (14) units past the edge, small bounce, 8 percent speed loss.
 - `grip` 6.5 to 10, `maxSpeed` 300 to 285, `offroadMax` 140 to 200, `AI_EASE` 0.94 to 0.88.
+
+## Track variety and names (2026-11-26)
+
+- Game renamed "Track Day Racer", tagged "A Trailbadger Game". Bruin and Clover approved.
+- Eight layout families (ring, comb, comb2, snake, side, cross, tee, step) in place of one.
+- Local track width (`track.hw`): wide start, pinch points, wide zones. Nominal width 104 to 120.
+- Edge barrier applied again after rider collisions.
+- Checks: 300 daily ids, no fallbacks, 2.4 ms average, lap length 3437 to 5867 units,
+  screen coverage (share of 100 unit cells with track) 0.64 average. 84 simulated races
+  across all families finish, furthest distance past the edge 14.0 units.
+- Not done: self-crossing (figure of eight) layouts. Pinch points are mild.
