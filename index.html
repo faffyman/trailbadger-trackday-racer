@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>Track Day Racer</title>
+    <meta name="description" content="Race Brock the badger against Tod, Bruin and Clover on a new mountain bike track every day.">
+    <meta name="theme-color" content="#1d2b1f">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Track Day">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="assets/img/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+    <link rel="stylesheet" href="css/game.css">
+</head>
+<body data-screen="home">
+<div id="app">
+    <div id="safe" aria-hidden="true"></div>
+
+    <canvas id="game" role="img" aria-label="Race track seen from above"></canvas>
+
+    <!-- Race HUD -->
+    <header id="hud" aria-label="Race status">
+        <div class="hud-group">
+            <div id="hud-place" class="chip chip-place" aria-label="Place">1st</div>
+            <div id="hud-lap" class="chip" aria-label="Lap">Lap 1/3</div>
+        </div>
+        <div class="hud-group">
+            <div id="hud-time" class="chip chip-time" aria-label="Race time">0:00.00</div>
+            <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>
+            </button>
+        </div>
+    </header>
+    <div id="wrongway" role="status" hidden>Wrong way!</div>
+    <div id="banner" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Touch controls -->
+    <div id="touch" aria-label="Touch controls">
+        <button class="tbtn steer-left" type="button" tabindex="-1" data-act="left" aria-label="Steer left">
+            <svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4.5 7.5 12 15 19.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tbtn steer-right" type="button" tabindex="-1" data-act="right" aria-label="Steer right">
+            <svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 16.5 12 9 19.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tbtn brake" type="button" tabindex="-1" data-act="brake" aria-label="Brake">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/></svg>
+            <span class="tlabel">Brake</span>
+        </button>
+        <button class="tbtn pedal" type="button" tabindex="-1" data-act="pedal" aria-label="Pedal">
+            <svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 12 8 5.5M12 12l4 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="5.2" y="3" width="5.6" height="3.2" rx="1.2" fill="currentColor"/><rect x="13.2" y="17.8" width="5.6" height="3.2" rx="1.2" fill="currentColor"/></svg>
+            <span class="tlabel">Pedal</span>
+        </button>
+    </div>
+
+    <!-- Top bar: sound toggles and info, on every screen except the race -->
+    <div id="topbar" role="toolbar" aria-label="Sound and help">
+        <button id="btn-music" class="icon-btn toggle" type="button" aria-label="Music" aria-pressed="true">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6.5l10-2V16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6.5" cy="18" r="2.6" fill="currentColor"/><circle cx="16.5" cy="16" r="2.6" fill="currentColor"/><path class="slash" d="M3.5 3.5 20.5 20.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-effects" class="icon-btn toggle" type="button" aria-label="Sound effects" aria-pressed="true">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.6L13 19V5L7.6 9.5H4z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.6 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="slash" d="M3.5 3.5 20.5 20.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-info" class="icon-btn" type="button" aria-label="How to play" aria-haspopup="dialog">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/></svg>
+        </button>
+    </div>
+
+    <!-- Home -->
+    <main id="screen-home" class="screen screen-home" aria-labelledby="title">
+        <div class="home-inner">
+            <header class="title-block">
+                <canvas id="title-portrait" class="portrait portrait-lg" width="144" height="144" aria-hidden="true"></canvas>
+                <div>
+                    <h1 id="title">Track Day Racer</h1>
+                    <p class="tagline">A Trailbadger Game</p>
+                </div>
+            </header>
+            <div id="home-hero"></div>
+            <h2 class="section-title">Learn the ropes</h2>
+            <div id="home-row" class="card-row"></div>
+            <h2 class="section-title">Past days</h2>
+            <ul id="home-past" class="card-list"></ul>
+        </div>
+    </main>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen screen-center" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <div class="panel">
+            <h2 id="pause-title">Paused</h2>
+            <div class="btn-stack">
+                <button id="btn-resume" class="btn btn-primary" type="button">Resume</button>
+                <button id="btn-restart" class="btn" type="button">Restart</button>
+                <button id="btn-quit" class="btn" type="button">Quit to tracks</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results -->
+    <section id="screen-results" class="screen screen-center" role="dialog" aria-modal="true" aria-labelledby="res-title">
+        <div class="panel panel-results">
+            <div class="res-head">
+                <p id="res-track" class="res-track"></p>
+                <h2 id="res-title">1st</h2>
+                <p id="res-msg" class="res-msg"></p>
+                <p id="res-new" class="badge badge-new" hidden>New best</p>
+            </div>
+            <ol id="res-list" class="res-list"></ol>
+            <dl class="res-stats">
+                <div><dt>Race time</dt><dd id="res-time">0:00.00</dd></div>
+                <div><dt>Best lap</dt><dd id="res-lap">0:00.00</dd></div>
+            </dl>
+            <div class="btn-row res-actions">
+                <button id="btn-again" class="btn btn-primary" type="button">Race again</button>
+                <button id="btn-tracks" class="btn" type="button">Tracks</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Info panel -->
+    <div id="info" class="modal" role="dialog" aria-modal="true" aria-labelledby="info-title">
+        <div class="modal-card">
+            <div class="modal-head">
+                <h2 id="info-title">How to play</h2>
+                <button id="btn-info-close" class="icon-btn" type="button" aria-label="Close help">
+                    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <section>
+                    <h3>The race</h3>
+                    <p>You are Brock the badger. You race Tod the fox, Bruin the bear and Clover the rabbit. The first rider to finish all the laps wins. Staying on the dirt track keeps you fast. The grass slows you down.</p>
+                </section>
+                <section>
+                    <h3>Touch controls</h3>
+                    <ul>
+                        <li>Hold the big button on the right to pedal.</li>
+                        <li>Hold the arrows on the left to steer.</li>
+                        <li>Tap the small button to brake.</li>
+                        <li>You can use both thumbs at the same time.</li>
+                    </ul>
+                </section>
+                <section>
+                    <h3>Keyboard controls</h3>
+                    <ul>
+                        <li>Left and Right arrow keys, or A and D, steer.</li>
+                        <li>Up arrow or W pedals.</li>
+                        <li>Down arrow or S brakes.</li>
+                        <li>Escape or P pauses the race.</li>
+                        <li>Enter starts and confirms.</li>
+                    </ul>
+                </section>
+                <section>
+                    <h3>Pickups</h3>
+                    <ul class="pickups">
+                        <li><span class="dot dot-boost"></span><span><strong>Lightning bolt.</strong> Gives you a short burst of speed.</span></li>
+                        <li><span class="dot dot-mud"></span><span><strong>Mud splat.</strong> Drops mud behind you. A rider who rides through it slows down. Your own mud never slows you.</span></li>
+                        <li><span class="dot dot-bramble"></span><span><strong>Thorny ball.</strong> Drops brambles behind you. A rider who hits them cannot steer for a moment and loses speed.</span></li>
+                    </ul>
+                    <p>Pickups come back after a few seconds.</p>
+                </section>
+                <section>
+                    <h3>Jumps and berms</h3>
+                    <p>A ramp launches you into the air if you ride fast enough. Land with the bike pointing the way you travel. A clean landing gives you a small boost. A bad landing slows you down.</p>
+                    <p>A berm is a banked bend. Ride on the outside of the bend. You grip better and go faster there.</p>
+                </section>
+                <section>
+                    <h3>Daily tracks</h3>
+                    <p>A new track appears every day. Everyone gets the same track on the same day. The game keeps the last 30 days for you to replay. The two intro tracks are gentle and are always there.</p>
+                </section>
+                <section>
+                    <h3>Your stats</h3>
+                    <dl class="stat-grid">
+                        <div><dt>Races</dt><dd id="stat-races">0</dd></div>
+                        <div><dt>Wins</dt><dd id="stat-wins">0</dd></div>
+                        <div><dt>Podiums</dt><dd id="stat-podiums">0</dd></div>
+                    </dl>
+                </section>
+                <section>
+                    <h3>Install the game</h3>
+                    <p>On iPhone or iPad, tap the Share button, then tap Add to Home Screen.</p>
+                    <p>On Android, open the browser menu, then tap Install app or Add to Home screen.</p>
+                    <p>After you install it, the game works without internet.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+<noscript><p class="noscript">Track Day Racer needs JavaScript. Please turn it on and reload the page.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

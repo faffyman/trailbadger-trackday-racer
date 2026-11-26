@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Editor and tool state
+.idea/
+.vscode/
+.claude/
+.remember/
+
+# Test and debug output (should never be written here, ignored as a backstop)
+.playwright-mcp/
+test-results/
+playwright-report/
+*.log
+*.webm
+*.mp4
+
+# Dependencies, in case tooling is ever added (the game itself has none)
+node_modules/
