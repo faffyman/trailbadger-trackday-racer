@@ -409,6 +409,150 @@ button.card:active {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 
+.laps-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 16px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+}
+
+.laps-label {
+    flex: 1;
+    color: var(--muted);
+}
+
+.laps-value {
+    min-width: 4.2em;
+    text-align: center;
+    font-weight: 800;
+}
+
+.laps-row .icon-btn {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.laps-row .icon-btn:disabled {
+    opacity: 0.35;
+}
+
+.tilt-row {
+    display: none;
+}
+
+body.touch-ui .tilt-row {
+    display: flex;
+}
+
+.tilt-row strong {
+    color: var(--ink);
+}
+
+.tilt-btn {
+    min-width: 76px;
+}
+
+.tilt-btn[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: transparent;
+}
+
+.month-list {
+    display: grid;
+    gap: 8px;
+}
+
+.month {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0 10px;
+}
+
+.month[open] {
+    padding-bottom: 10px;
+}
+
+.month-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 52px;
+    padding: 0 6px;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 700;
+    border-radius: 14px;
+}
+
+.month-head::-webkit-details-marker {
+    display: none;
+}
+
+.month-name::before {
+    content: '';
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    margin-right: 0.7em;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    transform: rotate(-45deg);
+    transition: transform 0.12s ease;
+}
+
+.month[open] .month-name::before {
+    transform: rotate(45deg);
+}
+
+.month-count {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.month-head:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.pick {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+}
+
+.pick-label,
+.pick-note {
+    margin: 0;
+    color: var(--muted);
+}
+
+.pick-input {
+    min-height: 48px;
+    max-width: 260px;
+    padding: 8px 12px;
+    font: inherit;
+    color: var(--ink);
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 14px;
+}
+
+.pick-input:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
 .card-hero {
     flex-direction: column;
     align-items: stretch;

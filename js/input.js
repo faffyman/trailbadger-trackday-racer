@@ -18,11 +18,18 @@ const KEY_ACTS = {
 // between the two steer buttons when a thumb slides from one to the other.
 const REACH = 26;
 
+// Tilt steering: lean the phone left or right like a handlebar.
+const TILT_DEAD = 4;   // degrees of lean that do nothing
+const TILT_FULL = 24;  // degrees of lean for full steer
+
 export function createInput(root) {
     const keysDown = new Set();
     const pointers = new Map(); // pointerId -> act or null
     const buttons = root ? Array.from(root.querySelectorAll('[data-act]')) : [];
     let active = false;
+    let tiltOn = false;
+    let tiltSteer = 0;
+    let tiltSeen = false;
 
     function actAt(x, y) {
         let best = null;
@@ -66,11 +73,60 @@ export function createInput(root) {
 
     function read() {
         const set = acts();
+        const pressed = (set.has('right') ? 1 : 0) - (set.has('left') ? 1 : 0);
         return {
-            steer: (set.has('right') ? 1 : 0) - (set.has('left') ? 1 : 0),
+            // A steer button or key always wins over the lean of the phone.
+            steer: pressed !== 0 || !tiltOn ? pressed : tiltSteer,
             pedal: set.has('pedal'),
             brake: set.has('brake')
         };
+    }
+
+    // Which way the phone leans, as seen by the player, whatever way up the screen is.
+    function onTilt(e) {
+        if (e.gamma === null || e.beta === null || e.gamma === undefined) {
+            return;
+        }
+        let turn = 0;
+        if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === 'number') {
+            turn = window.screen.orientation.angle;
+        } else if (typeof window.orientation === 'number') {
+            turn = window.orientation;
+        }
+        turn = ((turn % 360) + 360) % 360;
+        let lean = e.gamma;
+        if (turn === 90) lean = e.beta;
+        else if (turn === 270) lean = -e.beta;
+        else if (turn === 180) lean = -e.gamma;
+        const size = Math.abs(lean);
+        const amount = size <= TILT_DEAD ? 0 : Math.min(1, (size - TILT_DEAD) / (TILT_FULL - TILT_DEAD));
+        tiltSteer = lean < 0 ? -amount : amount;
+        tiltSeen = true;
+    }
+
+    // Turn tilt steering on or off. Call it from a tap: iPhones ask the player for
+    // permission and only allow that question during a user gesture.
+    // Resolves to true when tilt is on and the motion sensor may be read.
+    function setTilt(on) {
+        if (!on || typeof window.DeviceOrientationEvent === 'undefined') {
+            tiltOn = false;
+            tiltSteer = 0;
+            window.removeEventListener('deviceorientation', onTilt);
+            return Promise.resolve(false);
+        }
+        const listen = () => {
+            tiltOn = true;
+            window.removeEventListener('deviceorientation', onTilt);
+            window.addEventListener('deviceorientation', onTilt);
+            return true;
+        };
+        const ask = window.DeviceOrientationEvent.requestPermission;
+        if (typeof ask === 'function') {
+            return ask.call(window.DeviceOrientationEvent)
+                .then((answer) => (answer === 'granted' ? listen() : false))
+                .catch(() => false);
+        }
+        return Promise.resolve(listen());
     }
 
     function setActive(on) {
@@ -146,5 +202,5 @@ export function createInput(root) {
         root.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    return { read, reset, setActive };
+    return { read, reset, setActive, setTilt, tiltSeen: () => tiltSeen };
 }

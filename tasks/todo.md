@@ -69,3 +69,27 @@ Tim played it and said the handling is much better.
 - Six more themes added the same day: beach (palms, sea edge), desert (cacti), bog (peat
   pools, standing stones), night, bluebell, slate. Sixteen in total. All drawn in code, no
   image files. Installed size 443 KB (245 KB transfer), target is under 1 MB.
+
+## History, date picker, crossover (2026-11-26)
+
+- `historyDays` 365. Past days fold by month; a month builds its cards when first opened.
+- Date picker on the home screen: any day from 1990 up to today.
+- Saved bests are no longer pruned. One small record per track raced.
+- New layout family `curl`: the lap crosses its own path once at a right angle, with a ramp
+  just before the crossing (`jump.over`). `track.cross` holds the two sample indices.
+- If the seeded family finds no valid shape in 40 tries, the other families are tried
+  before the plain ellipse. 4050 days checked: no ellipse fallbacks.
+- Checks: 40 simulated races on curl tracks finish, furthest past the edge 14.0 units.
+- Not checked: whether riders visibly clear the crossing in the air on every curl track;
+  the picker on a real phone.
+
+## Tilted view, lap setting, tilt steering (2026-11-26)
+
+- `view.tilt` 0.74: three-quarter camera. Berms are raised banks, trees stand on trunks,
+  riders and pickups keep their shape. Set 1 for the flat view. Leaves empty bands above
+  and below the world.
+- Race length: default 4 laps, player setting 2 to 8 on the home screen. Best race time is
+  kept per race length (`times`), best lap and best place are shared.
+- Tilt steering option (phone motion sensor), off by default. Tested with a simulated
+  sensor only; needs a real phone.
+- Saved track records cap raised from 200 to 5000.

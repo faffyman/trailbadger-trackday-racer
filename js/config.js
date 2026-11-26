@@ -9,13 +9,19 @@
 export const CONFIG = {
     title: 'Track Day Racer',
     storageKey: 'trailbadger-racer',
-    cacheName: 'trailbadger-racer-v8',
+    cacheName: 'trailbadger-racer-v13',
 
     world: { w: 1600, h: 900 },
+    // Camera tilt: the world is squashed to this share of its height on screen and tall
+    // things (trees, berms, riders in the air) are lifted. 1 = flat top-down view.
+    view: { tilt: 0.74 },
     fixedDt: 1 / 60,
 
+    // Race length. The player can change it on the home screen; it is saved with the settings.
+    laps: { def: 4, min: 2, max: 8 },
+
     // Track list
-    historyDays: 30,
+    historyDays: 365,
     introTracks: ['intro-1', 'intro-2'],
     dailyPrefix: 'daily-', // followed by YYYY-MM-DD (local date)
 
@@ -26,8 +32,8 @@ export const CONFIG = {
         widthIntro: 116,
         widthMin: 104,
         widthMax: 120,
-        lapsIntro: 6,
-        lapsDaily: 6,
+        lapsIntro: 4,
+        lapsDaily: 4,
         minRadiusFactor: 0.75,  // min centreline radius of curvature = width * factor
         minGapFactor: 1.4,      // min distance between non-adjacent centreline parts = width * factor
         bermCurvature: 1 / 260, // |curvature| above this counts as a bend
@@ -156,7 +162,9 @@ export const CONFIG = {
  * @property {Float32Array} curv    signed curvature in 1/u, positive = bend to the right (clockwise on screen)
  * @property {{from:number,to:number,side:number}[]} berms  sample range with from < to (never wraps index 0);
  *                                  side is the OUTER side of the bend: +1 right of travel, -1 left
- * @property {{i:number}[]} jumps   ramp lip at sample i, across the full width
+ * @property {{a:number,b:number}|null} cross  the two samples where the lap crosses its own path, or null
+ * @property {{i:number,over?:boolean}[]} jumps   ramp lip at sample i, across the full width; over = the ramp
+ *                                  that carries riders across the crossing
  * @property {{i:number,off:number,type:'boost'|'mud'|'bramble'}[]} pickupSpots  off = lateral offset in units
  * @property {{x:number,y:number,r:number,type:'tree'|'bush'|'rock',v:number}[]} decor  v = 0..1 variant value
  * @property {{x:number,y:number,angle:number}[]} grid  4 start slots behind sample 0, slot 0 at the front

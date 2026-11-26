@@ -12,7 +12,8 @@ const MAX_TRIES = 40;
 const DENSE = 360;          // points on the raw closed curve before resampling
 const RELAX_LIMIT = 0.8;    // corners are rounded off beyond this fraction of the tightest allowed curvature
 const MIN_START_RUN = 22;
-const FAMILIES = ['ring', 'comb', 'comb2', 'snake', 'side', 'cross', 'tee', 'step'];   // samples of near-straight track needed around the start line
+const FAMILIES = ['ring', 'comb', 'comb2', 'snake', 'side', 'cross', 'tee', 'step', 'curl'];
+const CROSS_ZONE = 15;       // samples each side of a crossing where the two branches share ground   // samples of near-straight track needed around the start line
 
 const NAME_A = ['Bracken', 'Conker', 'Hazel', 'Fernwood', 'Acorn', 'Thistle', 'Mossy', 'Bramble',
     'Willow', 'Ember', 'Foxglove', 'Dappled', 'Hawthorn', 'Sorrel', 'Mistle', 'Birch'];
@@ -378,6 +379,14 @@ function familyOutline(family, rng, s) {
         const c = j(0.5, 0.05);
         return [[0, 0], [1, 0], [1, c], [b, c], [b, 1], [a, 1], [a, c], [0, c]];
     }
+    if (family === 'curl') {
+        // The lap curls into an inner loop and crosses its own path once, at a right angle.
+        const x1 = j(0.3, 0.02);
+        const x2 = j(0.66, 0.02);
+        const y1 = j(0.335, 0.008);
+        const y2 = j(0.665, 0.008);
+        return [[0, 0], [1, 0], [1, 1], [x1, 1], [x1, y1], [x2, y1], [x2, y2], [0, y2]];
+    }
     // step: two offset blocks joined in the middle
     const u1 = j(0.6, 0.03);
     const u2 = j(0.4, 0.03);
@@ -399,7 +408,7 @@ function outlineCurve(rng, profile, ampScale) {
     const pts = familyOutline(profile.family, rng, ampScale);
     const flipX = rng() < 0.5;
     const flipY = rng() < 0.5;
-    const sigma = 62 + 24 * rng();
+    const sigma = profile.family === 'curl' ? 60 + 8 * rng() : 62 + 24 * rng();
     const corners = [];
     for (const p of pts) {
         const u = (flipX ? 1 - p[0] : p[0]) + (rng() * 2 - 1) * 0.012 * ampScale;
@@ -416,7 +425,7 @@ function outlineCurve(rng, profile, ampScale) {
         const roll = rng();
         const at = 0.35 + 0.3 * rng();
         const push = (35 + 45 * rng()) * ampScale * (rng() < 0.5 ? -1 : 1);
-        if (len > 520 && roll < 0.45) {
+        if (len > 520 && roll < 0.45 && profile.family !== 'curl') {
             const ex = (b[0] - a[0]) / len;
             const ey = (b[1] - a[1]) / len;
             poly.push([a[0] + (b[0] - a[0]) * at - ey * push, a[1] + (b[1] - a[1]) * at + ex * push]);
@@ -541,8 +550,45 @@ function circDist(a, b, n) {
     return Math.min(d, n - d);
 }
 
+/**
+ * Places where the closed centreline crosses itself. Each entry has the two sample indices
+ * (a < b) and the cosine of the angle between the branches.
+ */
+function findCrossings(px, py, tx, ty, n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        const i2 = (i + 1) % n;
+        const ax = px[i];
+        const ay = py[i];
+        const bx = px[i2] - ax;
+        const by = py[i2] - ay;
+        for (let j = i + 2; j < n; j++) {
+            if (i === 0 && j === n - 1) continue;
+            const j2 = (j + 1) % n;
+            const cx = px[j];
+            const cy = py[j];
+            const dx = px[j2] - cx;
+            const dy = py[j2] - cy;
+            const den = bx * dy - by * dx;
+            if (den === 0) continue;
+            const s = ((cx - ax) * dy - (cy - ay) * dx) / den;
+            const u = ((cx - ax) * by - (cy - ay) * bx) / den;
+            if (s >= 0 && s < 1 && u >= 0 && u < 1) {
+                out.push({ a: i, b: j, cos: Math.abs(tx[i] * tx[j] + ty[i] * ty[j]) });
+            }
+        }
+    }
+    return out;
+}
+
+function inCrossZone(cross, i, j, n, zone) {
+    if (!cross) return false;
+    return (circDist(i, cross.a, n) <= zone && circDist(j, cross.b, n) <= zone) ||
+        (circDist(i, cross.b, n) <= zone && circDist(j, cross.a, n) <= zone);
+}
+
 /** True when no two far-apart parts of the lap come closer than the gap limit. */
-function gapsOk(px, py, n, step, width) {
+function gapsOk(px, py, n, step, width, cross) {
     const minGap = width * CONFIG.track.minGapFactor * 1.005;
     const minGap2 = minGap * minGap;
     const skip = Math.ceil((3 * width) / step);
@@ -551,6 +597,7 @@ function gapsOk(px, py, n, step, width) {
         const yi = py[i];
         for (let j = i + skip + 1; j < n; j++) {
             if (circDist(i, j, n) <= skip) continue;
+            if (inCrossZone(cross, i, j, n, CROSS_ZONE)) continue;
             const dx = px[j] - xi;
             const dy = py[j] - yi;
             if (dx * dx + dy * dy < minGap2) return false;
@@ -632,10 +679,29 @@ function buildCentreline(curve, profile) {
     for (let i = 0; i < n; i++) {
         if (Math.abs(d.curv[i]) > maxCurv) return null;
     }
-    if (!gapsOk(rx, ry, n, step, profile.width)) return null;
+    // A crossing layout must cross itself exactly once, squarely, with the two visits far
+    // apart along the lap. Every other layout must not cross itself at all.
+    const crossings = findCrossings(rx, ry, d.tx, d.ty, n);
+    let cross = null;
+    if (profile.family === 'curl') {
+        if (crossings.length !== 1) return null;
+        cross = crossings[0];
+        if (cross.cos > 0.3 || circDist(cross.a, cross.b, n) < n * 0.2) return null;
+    } else if (crossings.length) {
+        return null;
+    }
+    if (!gapsOk(rx, ry, n, step, profile.width, cross)) return null;
 
     // A clear straight for the start, then rotate so it is centred on sample 0.
-    const startRuns = straightRuns(d.curv, n, CONFIG.track.straightCurvature * 1.5);
+    // The start line stays well away from a crossing.
+    let startCurv = d.curv;
+    if (cross) {
+        startCurv = Float64Array.from(d.curv);
+        for (let i = 0; i < n; i++) {
+            if (circDist(i, cross.a, n) < 34 || circDist(i, cross.b, n) < 34) startCurv[i] = 1;
+        }
+    }
+    const startRuns = straightRuns(startCurv, n, CONFIG.track.straightCurvature * 1.5);
     if (startRuns.longest < MIN_START_RUN) return null;
     const shift = startRuns.centre;
 
@@ -649,8 +715,14 @@ function buildCentreline(curve, profile) {
         ty: rotate(d.ty, shift),
         nx: rotate(d.nx, shift),
         ny: rotate(d.ny, shift),
-        curv: rotate(d.curv, shift)
+        curv: rotate(d.curv, shift),
+        cross: null
     };
+    if (cross) {
+        const a = (cross.a - shift + n) % n;
+        const b = (cross.b - shift + n) % n;
+        out.cross = { a: Math.min(a, b), b: Math.max(a, b) };
+    }
 
     if (profile.lively) {
         // Dull tracks (a smooth oval, or bends all one way) are rejected.
@@ -681,7 +753,9 @@ function buildCentreline(curve, profile) {
         }
         let turning = 0;
         for (let k = 0; k < n; k++) turning += Math.abs(out.curv[k]) * step;
-        if (bends < 4 || left < 1 || right < 1 || tight < 1 || turning < TAU * 1.8) return null;
+        // A crossing layout winds twice the same way, so it has bends of one hand only.
+        const oneHand = left < 1 || right < 1;
+        if (bends < 4 || (oneHand && !out.cross) || tight < 1 || turning < TAU * 1.8) return null;
     }
     return out;
 }
@@ -718,7 +792,7 @@ function findBerms(line, wanted) {
                 score += Math.abs(curv[i + len]);
                 len++;
             }
-            if (len >= 8) {
+            if (len >= 8 && !nearCross(line, i, CROSS_ZONE + 2) && !nearCross(line, i + len - 1, CROSS_ZONE + 2)) {
                 runs.push({ from: i, to: i + len - 1, side: sign > 0 ? -1 : 1, score });
             }
             i += len;
@@ -738,6 +812,11 @@ function findBerms(line, wanted) {
  * close to another part of the lap. Width is constant along a berm. Returns null when a part
  * of the lap has no room for a usable width.
  */
+function nearCross(line, i, pad) {
+    const c = line.cross;
+    return !!c && (circDist(i, c.a, line.n) <= pad || circDist(i, c.b, line.n) <= pad);
+}
+
 function makeWidths(line, profile, berms, rng) {
     const { n, px, py, curv, step } = line;
     const base = profile.width / 2;
@@ -754,6 +833,7 @@ function makeWidths(line, profile, berms, rng) {
             for (let tries = 0; tries < 30; tries++) {
                 const i = Math.floor(rng() * n);
                 if (Math.abs(curv[i]) > 1 / 600 || inBerm(berms, i, 6) || !far(i, len + 8)) continue;
+                if (nearCross(line, i, len + CROSS_ZONE + 6)) continue;
                 zones.push({ c: i, len, k });
                 break;
             }
@@ -763,7 +843,7 @@ function makeWidths(line, profile, berms, rng) {
             const len = 14 + Math.floor(rng() * 9);
             for (let tries = 0; tries < 30; tries++) {
                 const i = Math.floor(rng() * n);
-                if (!far(i, len + 8)) continue;
+                if (!far(i, len + 8) || nearCross(line, i, len + CROSS_ZONE + 6)) continue;
                 zones.push({ c: i, len, k });
                 break;
             }
@@ -787,6 +867,7 @@ function makeWidths(line, profile, berms, rng) {
         let dmin2 = Infinity;
         for (let jj = 0; jj < n; jj++) {
             if (circDist(i, jj, n) <= skip) continue;
+            if (inCrossZone(line.cross, i, jj, n, CROSS_ZONE)) continue;
             const ddx = px[jj] - px[i];
             const ddy = py[jj] - py[i];
             const d2 = ddx * ddx + ddy * ddy;
@@ -829,11 +910,29 @@ function findJumps(line, rng, berms, wanted, hw, base) {
         if (circDist(i, 0, n) < 14) continue;
         if (inBerm(berms, i, 4)) continue;
         if (hw[i] < base * 0.97) continue;
+        if (nearCross(line, i, 26)) continue;
         // Keep the lip away from the ends of the straight so the landing is straight too.
         if (runs.before[i] < 4 || runs.after[i] < 4) continue;
         cand.push(i);
     }
     const jumps = [];
+    if (line.cross) {
+        // A ramp just before the crossing on the straighter branch: fast riders fly over the
+        // other path, slow riders roll across it.
+        const bend = (c) => {
+            let m = 0;
+            for (let k = -16; k <= 14; k++) m = Math.max(m, Math.abs(curv[(c + k + n) % n]));
+            return m;
+        };
+        const c = bend(line.cross.a) <= bend(line.cross.b) ? line.cross.a : line.cross.b;
+        if (bend(c) > CONFIG.track.straightCurvature * 1.6) return [];
+        const other = c === line.cross.a ? line.cross.b : line.cross.a;
+        const lip = (c - Math.round((hw[other] + 34) / line.step) + n) % n;
+        jumps.push({ i: lip, over: true });
+        for (let k = cand.length - 1; k >= 0; k--) {
+            if (circDist(cand[k], lip, n) < 30) cand.splice(k, 1);
+        }
+    }
     while (jumps.length < wanted && cand.length) {
         const idx = Math.floor(rng() * cand.length);
         const i = cand[idx];
@@ -865,6 +964,7 @@ function findPickups(line, rng, profile, jumps, hw) {
                 if (circDist(i, 0, n) < 16) continue;
                 if (jumps.some((j) => circDist(j.i, i, n) < 8)) continue;
                 if (spots.some((s) => circDist(s.i, i, n) < 10)) continue;
+                if (nearCross(line, i, CROSS_ZONE + 3)) continue;
                 chosen = i;
                 break;
             }
@@ -959,7 +1059,7 @@ function buildFeatures(id, line, profile, strict) {
     const jumps = findJumps(line, rng, berms, profile.jumps, hw, profile.width / 2);
     if (strict) {
         // The cross has short straights, so one jump is enough there.
-        if (jumps.length < (profile.family === 'cross' ? 1 : profile.jumps)) return null;
+        if (jumps.length < (profile.family === 'cross' || line.cross ? 1 : profile.jumps)) return null;
         if (berms.length < (profile.kind === 'intro' ? 1 : 2)) return null;
     } else if (jumps.length < 1) {
         return null;
@@ -1000,6 +1100,7 @@ function assemble(id, seed, profile, line, features) {
         curv: toF32(line.curv),
         hw: toF32(features.hw),
         family: profile.family,
+        cross: line.cross,
         berms: features.berms,
         jumps: features.jumps,
         pickupSpots: features.pickupSpots,
@@ -1019,9 +1120,18 @@ export function generateTrackInfo(id) {
     const base = makeRng(seed);
     const profile = makeProfile(id, base);
 
-    for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
+    // The seeded family first. If it finds no valid shape, the other daily families get a
+    // turn (in list order from the seeded one) before the plain ellipse is used.
+    const turns = profile.kind === 'daily' ? FAMILIES.length : 1;
+    const firstFamily = FAMILIES.indexOf(profile.family);
+    for (let attempt = 0; attempt < MAX_TRIES * turns; attempt++) {
+        const turn = Math.floor(attempt / MAX_TRIES);
+        if (turn > 0 && attempt % MAX_TRIES === 0) {
+            profile.family = FAMILIES[(firstFamily + turn) % FAMILIES.length];
+            profile.method = profile.family === 'ring' ? 'features' : 'outline';
+        }
         const rng = makeRng((seed + Math.imul(attempt + 1, 0x9e3779b1)) >>> 0);
-        const ampScale = Math.pow(0.94, attempt);
+        const ampScale = Math.pow(0.94, attempt % MAX_TRIES);
         const curve = profile.method === 'outline'
             ? outlineCurve(rng, profile, ampScale)
             : (profile.method === 'features'
@@ -1038,5 +1148,5 @@ export function generateTrackInfo(id) {
     const plain = Object.assign({}, profile, { lively: false });
     const line = buildCentreline(ellipseCurve(plain), plain);
     const features = buildFeatures(id, line, plain, false);
-    return { track: assemble(id, seed, plain, line, features), tries: MAX_TRIES, fallback: true };
+    return { track: assemble(id, seed, plain, line, features), tries: MAX_TRIES * turns, fallback: true };
 }

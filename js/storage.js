@@ -5,7 +5,7 @@
 import { CONFIG } from './config.js';
 
 const VERSION = 1;
-const MAX_TRACKS = 200;
+const MAX_TRACKS = 5000;
 const MAX_TIME = 3600;
 const ID_PATTERN = /^(intro-\d{1,2}|daily-\d{4}-\d{2}-\d{2})$/;
 
@@ -14,7 +14,7 @@ let cache = null;
 function defaults() {
     return {
         v: VERSION,
-        settings: { music: true, effects: true },
+        settings: { music: true, effects: true, laps: CONFIG.laps.def, tilt: false },
         tracks: {},
         stats: { races: 0, wins: 0, podiums: 0 }
     };
@@ -32,6 +32,27 @@ function placeNumber(value) {
     return Number.isInteger(value) && value >= 1 && value <= CONFIG.racers.length ? value : null;
 }
 
+function lapCount(value, fallback) {
+    return Number.isInteger(value) && value >= CONFIG.laps.min && value <= CONFIG.laps.max ? value : fallback;
+}
+
+// Best race time for each race length, keyed by the number of laps.
+function lapTimes(raw, oldBest) {
+    const out = {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        for (let n = CONFIG.laps.min; n <= CONFIG.laps.max; n++) {
+            const t = seconds(raw[n]);
+            if (t !== null) {
+                out[n] = t;
+            }
+        }
+    } else if (seconds(oldBest) !== null) {
+        // Saves from before the lap setting: every race had 6 laps.
+        out[6] = oldBest;
+    }
+    return out;
+}
+
 function flag(value, fallback) {
     return typeof value === 'boolean' ? value : fallback;
 }
@@ -45,6 +66,8 @@ function sanitize(raw) {
     if (raw.settings && typeof raw.settings === 'object') {
         save.settings.music = flag(raw.settings.music, true);
         save.settings.effects = flag(raw.settings.effects, true);
+        save.settings.laps = lapCount(raw.settings.laps, CONFIG.laps.def);
+        save.settings.tilt = flag(raw.settings.tilt, false);
     }
     if (raw.stats && typeof raw.stats === 'object') {
         save.stats.races = count(raw.stats.races);
@@ -62,7 +85,7 @@ function sanitize(raw) {
                 continue;
             }
             save.tracks[id] = {
-                bestTime: seconds(rec.bestTime),
+                times: lapTimes(rec.times, rec.bestTime),
                 bestLap: seconds(rec.bestLap),
                 bestPlace: placeNumber(rec.bestPlace),
                 plays: count(rec.plays)
@@ -97,8 +120,15 @@ function current() {
     return cache;
 }
 
+// The copy handed out has bestTime filled in for the current lap setting.
 export function loadSave() {
-    return JSON.parse(JSON.stringify(current()));
+    const copy = JSON.parse(JSON.stringify(current()));
+    const laps = copy.settings.laps;
+    for (const id of Object.keys(copy.tracks)) {
+        const t = copy.tracks[id].times[laps];
+        copy.tracks[id].bestTime = typeof t === 'number' ? t : null;
+    }
+    return copy;
 }
 
 export function saveSettings(settings) {
@@ -106,11 +136,14 @@ export function saveSettings(settings) {
     if (settings && typeof settings === 'object') {
         save.settings.music = flag(settings.music, save.settings.music);
         save.settings.effects = flag(settings.effects, save.settings.effects);
+        save.settings.laps = lapCount(settings.laps, save.settings.laps);
+        save.settings.tilt = flag(settings.tilt, save.settings.tilt);
     }
     writeStored();
 }
 
-export function recordResult(trackId, result) {
+// `laps` is the length of the race that was run. Best times are kept per race length.
+export function recordResult(trackId, result, laps) {
     const outcome = { newBestTime: false, newBestPlace: false };
     if (typeof trackId !== 'string' || !ID_PATTERN.test(trackId) || !result || typeof result !== 'object') {
         return outcome;
@@ -119,15 +152,16 @@ export function recordResult(trackId, result) {
     const time = seconds(result.time);
     const lap = seconds(result.bestLap);
     const place = placeNumber(result.place);
+    const len = lapCount(laps, save.settings.laps);
 
     let rec = save.tracks[trackId];
     if (!rec) {
-        rec = { bestTime: null, bestLap: null, bestPlace: null, plays: 0 };
+        rec = { times: {}, bestLap: null, bestPlace: null, plays: 0 };
         save.tracks[trackId] = rec;
     }
     rec.plays += 1;
-    if (time !== null && (rec.bestTime === null || time < rec.bestTime)) {
-        rec.bestTime = time;
+    if (time !== null && (typeof rec.times[len] !== 'number' || time < rec.times[len])) {
+        rec.times[len] = time;
         outcome.newBestTime = true;
     }
     if (lap !== null && (rec.bestLap === null || lap < rec.bestLap)) {

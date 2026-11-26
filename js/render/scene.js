@@ -10,6 +10,29 @@ const WORLD_H = CONFIG.world.h;
 const MAX_DPR = 2;
 const MAX_PARTICLES = 260;
 const MAX_FLASHES = 16;
+// Tilted view. TILT squashes the world along the screen's vertical axis; LIFT is how far (in
+// world units along the up axis) one unit of height moves a point up the screen.
+const TILT = Math.max(0.4, Math.min(1, (CONFIG.view && CONFIG.view.tilt) || 1));
+const LIFT = Math.sqrt(1 - TILT * TILT) / TILT;
+// World direction that points up the screen. Set by the layout before any drawing.
+const VIEW = { ux: 0, uy: -1 };
+
+// Undo the squash around (x, y) so an upright object keeps its shape, and raise it by h.
+function standUp(ctx, x, y, h) {
+    const lx = VIEW.ux * h * LIFT;
+    const ly = VIEW.uy * h * LIFT;
+    ctx.translate(x + lx, y + ly);
+    if (VIEW.ux !== 0) ctx.scale(1 / TILT, 1);
+    else ctx.scale(1, 1 / TILT);
+    ctx.translate(-x, -y);
+}
+
+// Heading as it looks on the tilted ground, for sprites drawn in standUp space.
+function tiltAngle(a) {
+    if (TILT === 1) return a;
+    return VIEW.ux !== 0 ? Math.atan2(Math.sin(a), Math.cos(a) * TILT) : Math.atan2(Math.sin(a) * TILT, Math.cos(a));
+}
+
 const LIGHT_X = -0.6; // light comes from the top left
 const LIGHT_Y = -0.8;
 
@@ -91,15 +114,24 @@ function ribbon(ctx, t, scale, extra, color, alpha) {
 // Stroke a line that runs `inset` units inside one edge of the track (side is 1 or -1).
 function edgeLine(ctx, t, side, inset, width, color, alpha) {
     const n = t.n;
+    // At a crossing the edge lines stop, so the junction is open ground.
+    const c = t.cross;
+    const gap = c ? Math.ceil((hwAt(t, c.a) + 8) / t.step) : 0;
     ctx.beginPath();
-    for (let i = 0; i < n; i++) {
+    let pen = false;
+    for (let k = 0; k <= n; k++) {
+        const i = k % n;
+        if (c && (Math.abs(i - c.a) <= gap || Math.abs(i - c.b) <= gap)) {
+            pen = false;
+            continue;
+        }
         const off = side * (hwAt(t, i) - inset);
         const x = t.px[i] + t.nx[i] * off;
         const y = t.py[i] + t.ny[i] * off;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (pen) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+        pen = true;
     }
-    ctx.closePath();
     ctx.lineWidth = width;
     ctx.strokeStyle = color;
     ctx.globalAlpha = alpha;
@@ -541,6 +573,8 @@ function paintTrack(ctx, t, rnd) {
     ctx.lineCap = 'round';
 }
 
+const BERM_H = 20; // height of a berm crest in world units
+
 // Banked berms: lit and shaded per sample so the bank reads as raised from the light direction.
 function paintBerms(ctx, t) {
     const th = t.theme;
@@ -556,11 +590,11 @@ function paintBerms(ctx, t) {
         const prof = [];
         for (let q = 0; q <= rise; q++) {
             const p = q / rise;
-            prof.push({ m: toe + (hw * 0.86 - toe) * p, tone: -0.3 + 0.5 * p, slope: 1 });
+            prof.push({ m: toe + (hw * 0.86 - toe) * p, tone: -0.3 + 0.5 * p, slope: 1, h: BERM_H * p * p });
         }
-        prof.push({ m: hw - 5, tone: 0.3, slope: 0 });
-        prof.push({ m: hw + 3, tone: -0.1, slope: -1 });
-        prof.push({ m: hw + 13, tone: -0.4, slope: -1 });
+        prof.push({ m: hw - 5, tone: 0.3, slope: 0, h: BERM_H });
+        prof.push({ m: hw + 3, tone: -0.1, slope: -1, h: BERM_H * 0.85 });
+        prof.push({ m: hw + 13, tone: -0.4, slope: -1, h: 0 });
         const outerM = prof[prof.length - 1].m;
         const side = br.side;
         const from = br.from;
@@ -605,10 +639,15 @@ function paintBerms(ctx, t) {
                 const tone = (a.tone + c.tone) / 2 + lit * 0.34;
                 const col = shadeHex(base, tone);
                 ctx.beginPath();
-                ctx.moveTo(t.px[i] + t.nx[i] * side * ma0, t.py[i] + t.ny[i] * side * ma0);
-                ctx.lineTo(t.px[i + 1] + t.nx[i + 1] * side * ma1, t.py[i + 1] + t.ny[i + 1] * side * ma1);
-                ctx.lineTo(t.px[i + 1] + t.nx[i + 1] * side * mc1, t.py[i + 1] + t.ny[i + 1] * side * mc1);
-                ctx.lineTo(t.px[i] + t.nx[i] * side * mc0, t.py[i] + t.ny[i] * side * mc0);
+                // Each corner is raised by the bank height at that point.
+                const la0 = a.h * k0 * LIFT;
+                const la1 = a.h * k1 * LIFT;
+                const lc0 = c.h * k0 * LIFT;
+                const lc1 = c.h * k1 * LIFT;
+                ctx.moveTo(t.px[i] + t.nx[i] * side * ma0 + VIEW.ux * la0, t.py[i] + t.ny[i] * side * ma0 + VIEW.uy * la0);
+                ctx.lineTo(t.px[i + 1] + t.nx[i + 1] * side * ma1 + VIEW.ux * la1, t.py[i + 1] + t.ny[i + 1] * side * ma1 + VIEW.uy * la1);
+                ctx.lineTo(t.px[i + 1] + t.nx[i + 1] * side * mc1 + VIEW.ux * lc1, t.py[i + 1] + t.ny[i + 1] * side * mc1 + VIEW.uy * lc1);
+                ctx.lineTo(t.px[i] + t.nx[i] * side * mc0 + VIEW.ux * lc0, t.py[i] + t.ny[i] * side * mc0 + VIEW.uy * lc0);
                 ctx.closePath();
                 ctx.fillStyle = col;
                 ctx.fill();
@@ -624,8 +663,9 @@ function paintBerms(ctx, t) {
                 const k = smooth((i - from) / 3) * smooth((to - i) / 3);
                 const m0 = pass === 0 ? hw - 5 : hw * 0.42;
                 const m = outerM - (outerM - m0) * k;
-                const x = t.px[i] + t.nx[i] * side * m;
-                const y = t.py[i] + t.ny[i] * side * m;
+                const lh = (pass === 0 ? BERM_H : BERM_H * 0.12) * k * LIFT;
+                const x = t.px[i] + t.nx[i] * side * m + VIEW.ux * lh;
+                const y = t.py[i] + t.ny[i] * side * m + VIEW.uy * lh;
                 if (i === from) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
@@ -1079,8 +1119,12 @@ function buildLayers(r) {
     const decor = t.decor.slice().sort((a, b) => a.y - b.y);
     for (let i = 0; i < decor.length; i++) {
         const d = decor[i];
+        if (d.type === 'tree') continue;
+        g.save();
+        standUp(g, d.x, d.y, 0);
         if (d.type === 'rock') paintRock(g, d, t.theme, rnd);
-        else if (d.type === 'bush') paintBush(g, d, t.theme, rnd);
+        else paintBush(g, d, t.theme, rnd);
+        g.restore();
     }
 
     // Edge vignette
@@ -1095,8 +1139,31 @@ function buildLayers(r) {
     c.save();
     roundRectPath(c, 0, 0, WORLD_W, WORLD_H, 22);
     c.clip();
-    for (let i = 0; i < decor.length; i++) {
-        if (decor[i].type === 'tree') paintTree(c, decor[i], t.theme, rnd, s);
+    // Far trees first, so nearer ones overlap them.
+    const trees = decor.filter((d) => d.type === 'tree')
+        .sort((a, b) => (b.x * VIEW.ux + b.y * VIEW.uy) - (a.x * VIEW.ux + a.y * VIEW.uy));
+    const stemless = t.theme.tree === 'rock' || t.theme.tree === 'cactus';
+    for (let i = 0; i < trees.length; i++) {
+        const d = trees[i];
+        const h = stemless || TILT === 1 ? 0 : d.r * 1.5;
+        if (h > 0) {
+            // Shadow on the ground and a trunk up to the raised crown.
+            c.fillStyle = 'rgba(0,0,0,0.26)';
+            c.beginPath();
+            c.ellipse(d.x + 7, d.y + 6, d.r * 0.9, d.r * 0.6, 0, 0, TAU);
+            c.fill();
+            c.strokeStyle = t.theme.tree === 'palm' ? '#8a6a3c' : '#5a3d24';
+            c.lineWidth = Math.max(3, d.r * 0.3);
+            c.lineCap = 'round';
+            c.beginPath();
+            c.moveTo(d.x, d.y);
+            c.lineTo(d.x + VIEW.ux * h * LIFT, d.y + VIEW.uy * h * LIFT);
+            c.stroke();
+        }
+        c.save();
+        standUp(c, d.x, d.y, h);
+        paintTree(c, d, t.theme, rnd, s);
+        c.restore();
     }
     paintStartPosts(c, t, true);
     paintStartPosts(c, t, false);
@@ -1454,7 +1521,7 @@ export function createRenderer(canvas) {
         const availH = Math.max(1, r.cssH - ins.top - ins.bottom);
         r.rotated = availH > availW;
         const ww = r.rotated ? WORLD_H : WORLD_W;
-        const wh = r.rotated ? WORLD_W : WORLD_H;
+        const wh = (r.rotated ? WORLD_W : WORLD_H) * TILT;
         const pad = 4;
         r.fit = Math.max(0.05, Math.min((availW - pad * 2) / ww, (availH - pad * 2) / wh));
         const S = r.fit * r.dpr;
@@ -1463,23 +1530,26 @@ export function createRenderer(canvas) {
         // Device position of world (0, 0), snapped so the layers stay pixel aligned
         if (r.rotated) {
             r.ox = Math.round(cx + S * (WORLD_H / 2));
-            r.oy = Math.round(cy - S * (WORLD_W / 2));
+            r.oy = Math.round(cy - S * TILT * (WORLD_W / 2));
             r.upX = -1;
             r.upY = 0;
         } else {
             r.ox = Math.round(cx - S * (WORLD_W / 2));
-            r.oy = Math.round(cy - S * (WORLD_H / 2));
+            r.oy = Math.round(cy - S * TILT * (WORLD_H / 2));
             r.upX = 0;
             r.upY = -1;
         }
         r.layerScale = S;
+        VIEW.ux = r.upX;
+        VIEW.uy = r.upY;
     }
 
     function rebuild() {
         r.dirty = false;
         if (!r.track || !r.cssW) return;
-        if (!r.groundLayer || Math.abs(r.builtScale - r.layerScale) > 0.001 || r.builtTrack !== r.track) {
+        if (!r.groundLayer || Math.abs(r.builtScale - r.layerScale) > 0.001 || r.builtTrack !== r.track || r.builtRot !== r.rotated) {
             buildLayers(r);
+            r.builtRot = r.rotated;
             r.builtScale = r.layerScale;
             r.builtTrack = r.track;
         }
@@ -1539,8 +1609,8 @@ export function createRenderer(canvas) {
             if (!r.track || !r.groundLayer) return;
             r.clock += dt;
             const clock = r.clock;
-            if (r.rotated) ctx.setTransform(0, S, -S, 0, r.ox, r.oy);
-            else ctx.setTransform(S, 0, 0, S, r.ox, r.oy);
+            if (r.rotated) ctx.setTransform(0, S * TILT, -S, 0, r.ox, r.oy);
+            else ctx.setTransform(S, 0, 0, S * TILT, r.ox, r.oy);
 
             // Soft shadow of the whole board against the page background
             ctx.drawImage(r.groundLayer, 0, 0, r.groundLayer.width / S, r.groundLayer.height / S);
@@ -1558,7 +1628,12 @@ export function createRenderer(canvas) {
             if (pk) {
                 for (let i = 0; i < pk.length; i++) {
                     const p = pk[i];
-                    if (p.active) drawPickup(ctx, p, i, clock);
+                    if (p.active) {
+                        ctx.save();
+                        standUp(ctx, p.x, p.y, 0);
+                        drawPickup(ctx, p, i, clock);
+                        ctx.restore();
+                    }
                     else {
                         ctx.strokeStyle = 'rgba(255,255,255,0.2)';
                         ctx.lineWidth = 2;
@@ -1685,8 +1760,10 @@ export function createRenderer(canvas) {
                 const z = c.z > 0 ? c.z : 0;
                 const sc = 1 + z * 0.012;
                 ctx.save();
-                ctx.translate(c.x - z * 0.35, c.y - z * 0.8);
-                let ang = c.angle;
+                if (TILT === 1) ctx.translate(c.x - z * 0.35, c.y - z * 0.8);
+                else standUp(ctx, c.x, c.y, z * 0.9);
+                if (TILT !== 1) ctx.translate(c.x, c.y);
+                let ang = tiltAngle(c.angle);
                 if (c.bramble > 0) ang += Math.sin(clock * 26) * 0.3 + Math.sin(clock * 9) * 0.25;
                 else if (c.mud > 0) ang += Math.sin(clock * 14 + idx) * 0.05;
                 ctx.rotate(ang);

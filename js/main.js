@@ -1,14 +1,14 @@
 // Track Day Racer: screens, game loop and glue between the modules.
 
 import { CONFIG } from './config.js';
-import { generateTrack, listTracks } from './track.js';
+import { generateTrack, listTracks, dailyId } from './track.js';
 import { createRace } from './race.js';
 import { createRenderer, drawTrackThumb } from './render/scene.js';
 import { drawPortrait } from './render/sprites.js';
 import { audio } from './audio.js';
 import { registerServiceWorker } from './pwa.js';
 import { createInput } from './input.js';
-import { loadSave, saveSettings, recordResult, pruneTracks } from './storage.js';
+import { loadSave, saveSettings, recordResult } from './storage.js';
 
 const FINISH_DELAY = 2.2;     // seconds of free rolling after the player finishes
 const MAX_STEPS_PER_FRAME = 8;
@@ -54,7 +54,7 @@ function el(tag, className, text) {
 // ---------- Settings and sound ----------
 
 const save = loadSave();
-const settings = { music: save.settings.music, effects: save.settings.effects };
+const settings = { music: save.settings.music, effects: save.settings.effects, laps: save.settings.laps, tilt: save.settings.tilt };
 let wantedMusic = 'menu';
 
 function applySettings() {
@@ -340,6 +340,33 @@ function buildCard(entry, record, options) {
     return card;
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'];
+
+// Show the track card for the day chosen in the date picker.
+function showPicked(value, data) {
+    const box = $('pick-result');
+    box.replaceChildren();
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    if (!m) {
+        return;
+    }
+    const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const now = new Date();
+    if (Number.isNaN(date.getTime()) || date.getTime() > now.getTime() || Number(m[1]) < 1990) {
+        box.appendChild(el('p', 'pick-note', 'Pick a day up to today.'));
+        return;
+    }
+    const id = dailyId(date);
+    const label = date.getDate() + ' ' + MONTH_NAMES[date.getMonth()] + ' ' + date.getFullYear();
+    const save = data || loadSave();
+    box.appendChild(buildCard({ id, label }, save.tracks[id], { sub: label }));
+    const canvasEl = box.querySelector('canvas.thumb');
+    if (canvasEl) {
+        paintThumb(canvasEl);
+    }
+}
+
 let defaultTrackId = CONFIG.introTracks[0];
 
 function buildHome() {
@@ -379,13 +406,59 @@ function buildHome() {
     });
     row.previousElementSibling.textContent = newPlayer ? 'More tracks' : 'Learn the ropes';
 
+    // Past days, one folding group per month. The cards of a month are built the first time
+    // it is opened, so a year of history costs nothing until the player looks at it.
     const pastEntries = lists.daily.slice(1);
+    const months = new Map();
     pastEntries.forEach((entry) => {
-        const item = el('li');
-        item.appendChild(buildCard(entry, data.tracks[entry.id], { sub: entry.label }));
-        past.appendChild(item);
+        const key = entry.date.slice(0, 7);
+        if (!months.has(key)) {
+            months.set(key, []);
+        }
+        months.get(key).push(entry);
+    });
+    let first = true;
+    months.forEach((entries, key) => {
+        const group = el('details', 'month');
+        const raced = entries.filter((entry) => data.tracks[entry.id]).length;
+        const summary = el('summary', 'month-head');
+        summary.appendChild(el('span', 'month-name', MONTH_NAMES[Number(key.slice(5)) - 1] + ' ' + key.slice(0, 4)));
+        summary.appendChild(el('span', 'month-count', raced ? raced + ' of ' + entries.length + ' raced' : entries.length + ' tracks'));
+        group.appendChild(summary);
+        const fill = () => {
+            if (group.dataset.built) {
+                return;
+            }
+            group.dataset.built = '1';
+            const list = el('ul', 'card-list');
+            entries.forEach((entry) => {
+                const item = el('li');
+                item.appendChild(buildCard(entry, data.tracks[entry.id], { sub: entry.label }));
+                list.appendChild(item);
+            });
+            group.appendChild(list);
+            for (const canvasEl of list.querySelectorAll('canvas.thumb')) {
+                wantThumb(canvasEl);
+            }
+        };
+        group.addEventListener('toggle', () => {
+            if (group.open) {
+                fill();
+            }
+        });
+        if (first) {
+            group.open = true;
+            fill();
+            first = false;
+        }
+        past.appendChild(group);
     });
     past.previousElementSibling.hidden = pastEntries.length === 0;
+
+    // Date picker: any day up to today.
+    const pick = $('pick-date');
+    pick.max = today.date;
+    showPicked(pick.value, data);
 
     for (const canvasEl of homeEl.querySelectorAll('canvas.thumb')) {
         wantThumb(canvasEl);
@@ -463,7 +536,9 @@ function hideBanner() {
 
 function startRace(trackId) {
     try {
-        track = getTrack(trackId);
+        // The track data is shared and never changed, so the race gets a copy with the
+        // number of laps the player chose.
+        track = Object.assign({}, getTrack(trackId), { laps: settings.laps });
         race = createRace(track);
     } catch (err) {
         console.error('Could not start the race', err);
@@ -564,7 +639,7 @@ function beginFinish() {
     input.setActive(false);
     showBanner('Finish!', 0, true);
     const res = race.results();
-    const outcome = recordResult(track.id, res);
+    const outcome = recordResult(track.id, res, track.laps);
     resultsData = { res, outcome, trackId: track.id };
 }
 
@@ -782,12 +857,69 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// Race length stepper on the home screen.
+function showLaps() {
+    $('laps-value').textContent = String(settings.laps);
+    $('btn-laps-less').disabled = settings.laps <= CONFIG.laps.min;
+    $('btn-laps-more').disabled = settings.laps >= CONFIG.laps.max;
+}
+
+function changeLaps(step) {
+    const next = Math.max(CONFIG.laps.min, Math.min(CONFIG.laps.max, settings.laps + step));
+    if (next === settings.laps) {
+        return;
+    }
+    settings.laps = next;
+    saveSettings(settings);
+    audio.sfx('click');
+    showLaps();
+    // Best times are kept per race length, so the cards need a refresh.
+    const top = homeEl.scrollTop;
+    buildHome();
+    homeEl.scrollTop = top;
+}
+
+// Tilt steering switch. The sensor needs a tap before it may be read (iPhones ask the
+// player), so a saved "on" is re-armed by the first tap after the page loads.
+function showTilt(note) {
+    const button = $('btn-tilt');
+    button.setAttribute('aria-pressed', settings.tilt ? 'true' : 'false');
+    button.textContent = settings.tilt ? 'On' : 'Off';
+    $('tilt-note').textContent = note || (settings.tilt ? 'Lean the phone left and right to steer.' : 'Steer by leaning the phone.');
+}
+
+function setTiltSetting(on) {
+    input.setTilt(on).then((ok) => {
+        settings.tilt = on && ok;
+        saveSettings(settings);
+        showTilt(on && !ok ? 'This device did not allow the motion sensor.' : '');
+    });
+}
+
+$('btn-tilt').addEventListener('click', () => {
+    audio.sfx('click');
+    setTiltSetting(!settings.tilt);
+});
+if (settings.tilt) {
+    const arm = () => {
+        window.removeEventListener('pointerdown', arm, true);
+        if (settings.tilt) {
+            setTiltSetting(true);
+        }
+    };
+    window.addEventListener('pointerdown', arm, true);
+}
+showTilt();
+
+$('btn-laps-less').addEventListener('click', () => changeLaps(-1));
+$('btn-laps-more').addEventListener('click', () => changeLaps(1));
+showLaps();
+
 // ---------- Start up ----------
 
 function start() {
-    const lists = listTracks();
-    const ids = lists.intro.map((t) => t.id).concat(lists.daily.map((t) => t.id));
-    pruneTracks(ids.concat(CONFIG.introTracks));
+    // Saved bests are kept for every track ever raced; a record is tiny.
+    $('pick-date').addEventListener('change', (event) => showPicked(event.target.value));
 
     applySettings();
     try {

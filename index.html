@@ -79,10 +79,26 @@
                 </div>
             </header>
             <div id="home-hero"></div>
+            <div class="laps-row" role="group" aria-label="Race length">
+                <span class="laps-label">Race length</span>
+                <button id="btn-laps-less" class="icon-btn" type="button" aria-label="Fewer laps">&minus;</button>
+                <span class="laps-value"><span id="laps-value" aria-live="polite">4</span> laps</span>
+                <button id="btn-laps-more" class="icon-btn" type="button" aria-label="More laps">+</button>
+            </div>
+            <div class="laps-row tilt-row">
+                <span class="laps-label"><strong>Tilt steering</strong><br><span id="tilt-note">Steer by leaning the phone.</span></span>
+                <button id="btn-tilt" class="btn tilt-btn" type="button" aria-pressed="false" aria-label="Tilt steering">Off</button>
+            </div>
             <h2 class="section-title">Learn the ropes</h2>
             <div id="home-row" class="card-row"></div>
             <h2 class="section-title">Past days</h2>
-            <ul id="home-past" class="card-list"></ul>
+            <div id="home-past" class="month-list"></div>
+            <h2 class="section-title">Pick any day</h2>
+            <div class="pick">
+                <label class="pick-label" for="pick-date">Every day has its own track. Choose a date:</label>
+                <input id="pick-date" class="pick-input" type="date" min="1990-01-01">
+                <div id="pick-result"></div>
+            </div>
         </div>
     </main>
 
@@ -138,6 +154,7 @@
                     <ul>
                         <li>Hold the big button on the right to pedal.</li>
                         <li>Hold the arrows on the left to steer.</li>
+                        <li>Or turn on Tilt steering on the home screen. Then lean the phone left and right to steer.</li>
                         <li>Tap the small button to brake.</li>
                         <li>You can use both thumbs at the same time.</li>
                     </ul>
