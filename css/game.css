@@ -462,6 +462,11 @@ body.touch-ui .tilt-row {
     border-color: transparent;
 }
 
+.badge-lapped {
+    background: var(--warm);
+    color: #2a1505;
+}
+
 .month-list {
     display: grid;
     gap: 8px;

@@ -16,7 +16,7 @@ function defaults() {
         v: VERSION,
         settings: { music: true, effects: true, laps: CONFIG.laps.def, tilt: false },
         tracks: {},
-        stats: { races: 0, wins: 0, podiums: 0 }
+        stats: { races: 0, wins: 0, podiums: 0, lapped: 0 }
     };
 }
 
@@ -73,6 +73,7 @@ function sanitize(raw) {
         save.stats.races = count(raw.stats.races);
         save.stats.wins = count(raw.stats.wins);
         save.stats.podiums = count(raw.stats.podiums);
+        save.stats.lapped = count(raw.stats.lapped);
     }
     if (raw.tracks && typeof raw.tracks === 'object' && !Array.isArray(raw.tracks)) {
         let kept = 0;
@@ -178,6 +179,9 @@ export function recordResult(trackId, result, laps) {
     }
     if (place !== null && place <= 3) {
         save.stats.podiums += 1;
+    }
+    if (Array.isArray(result.lapped)) {
+        save.stats.lapped += Math.min(result.lapped.length, CONFIG.racers.length - 1);
     }
     writeStored();
     return outcome;

@@ -9,7 +9,7 @@
 export const CONFIG = {
     title: 'Track Day Racer',
     storageKey: 'trailbadger-racer',
-    cacheName: 'trailbadger-racer-v13',
+    cacheName: 'trailbadger-racer-v14',
 
     world: { w: 1600, h: 900 },
     // Camera tilt: the world is squashed to this share of its height on screen and tall
@@ -219,9 +219,9 @@ export const CONFIG = {
 
 /**
  * @typedef {Object} RaceEvent
- * @property {'count'|'go'|'pickup'|'boost'|'drop'|'mud'|'bramble'|'jump'|'land'|'bump'|'lap'|'finish'} type
+ * @property {'count'|'go'|'pickup'|'boost'|'drop'|'mud'|'bramble'|'jump'|'land'|'bump'|'lap'|'lapped'|'finish'} type
  * @property {number} racer   racer index, -1 for count and go
  * @property {number} [x]
  * @property {number} [y]
- * @property {number} [value] count: the number shown (3, 2, 1); land: 1 for clean, 0 for rough; lap: the lap time
+ * @property {number} [value] count: the number shown (3, 2, 1); land: 1 for clean, 0 for rough; lap: the lap time; lapped: index of the rider the player lapped
  */

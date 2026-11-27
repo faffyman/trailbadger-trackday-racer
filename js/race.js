@@ -844,9 +844,20 @@ export function createRace(track) {
         if (racing) {
             for (let i = 0; i < racers.length; i++) pickupsAndHazards(i, dt);
             rank();
+            // The player laps a rider when a whole lap ahead of them. Once per rider.
+            if (!racers[0].finished) {
+                for (let i = 1; i < racers.length; i++) {
+                    if (!ext[i].lapped && !racers[i].finished && ext[0].total - ext[i].total >= n) {
+                        ext[i].lapped = true;
+                        lappedList.push(i);
+                        emit('lapped', 0, racers[i].x, racers[i].y, i);
+                    }
+                }
+            }
             if (racers[0].finished) {
                 state.phase = 'finished';
                 rank();
+                classify();
             }
         }
     }
@@ -860,6 +871,25 @@ export function createRace(track) {
         else stepRacing(d, input);
     }
 
+    // Riders still on the track when the player finishes are classified where they are:
+    // whole laps behind, or the time they would need at their own average speed.
+    const lappedList = [];
+    const finalGaps = [];
+    function classify() {
+        const full = laps * n;
+        for (let i = 0; i < racers.length; i++) {
+            const r = racers[i];
+            if (r.finished) {
+                finalGaps[i] = { lapsDown: 0, estTime: r.finishTime };
+                continue;
+            }
+            const done = Math.max(0, ext[i].total);
+            const left = Math.max(0, full - done);
+            const pace = done > n * 0.25 && state.time > 0 ? done / state.time : (full / Math.max(1, state.time)) * 0.8;
+            finalGaps[i] = { lapsDown: Math.floor(left / n), estTime: state.time + left / Math.max(1e-6, pace) };
+        }
+    }
+
     function results() {
         const player = racers[0];
         return {
@@ -869,8 +899,13 @@ export function createRace(track) {
             order: rankOrder.map((idx) => ({
                 id: racers[idx].id,
                 name: CONFIG.racers[idx].name,
-                time: racers[idx].finished ? racers[idx].finishTime : null
-            }))
+                time: racers[idx].finished ? racers[idx].finishTime : null,
+                // For a rider who had not finished: laps behind and the estimated finish time.
+                lapsDown: finalGaps[idx] ? finalGaps[idx].lapsDown : 0,
+                estTime: finalGaps[idx] ? finalGaps[idx].estTime : null
+            })),
+            // Names of the riders the player lapped during the race.
+            lapped: lappedList.map((idx) => CONFIG.racers[idx].name)
         };
     }
 

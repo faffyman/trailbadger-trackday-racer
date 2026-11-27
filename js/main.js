@@ -212,6 +212,7 @@ function openInfo() {
     $('stat-races').textContent = String(stats.races);
     $('stat-wins').textContent = String(stats.wins);
     $('stat-podiums').textContent = String(stats.podiums);
+    $('stat-lapped').textContent = String(stats.lapped || 0);
     infoOpener = document.activeElement;
     infoOpen = true;
     body.dataset.info = 'open';
@@ -616,6 +617,12 @@ function handleEvent(ev) {
         showBanner('GO!', 800);
         return;
     }
+    if (ev.type === 'lapped') {
+        const who = CONFIG.racers[ev.value];
+        audio.sfx('win');
+        showBanner('You lapped ' + (who ? who.name : 'a rider') + '!', 1800, true);
+        return;
+    }
     if (ev.racer === 0) {
         if (ev.type === 'finish') {
             audio.sfx('finish');
@@ -671,6 +678,15 @@ function showResults() {
         badge.hidden = true;
     }
 
+    const lapBadge = $('res-lapped');
+    const lappedNames = Array.isArray(res.lapped) ? res.lapped : [];
+    if (lappedNames.length) {
+        lapBadge.textContent = 'Lapper badge: you lapped ' + lappedNames.join(' and ') + '!';
+        lapBadge.hidden = false;
+    } else {
+        lapBadge.hidden = true;
+    }
+
     const list = $('res-list');
     list.replaceChildren();
     const order = Array.isArray(res.order) ? res.order : [];
@@ -688,7 +704,18 @@ function showResults() {
         }
         li.appendChild(portrait);
         li.appendChild(el('span', 'res-name', entry.name));
-        li.appendChild(el('span', 'res-row-time', entry.time === null || entry.time === undefined ? 'DNF' : formatTime(entry.time)));
+        // A rider still on the track is classified by the gap, not shown as a non-finisher.
+        let shown;
+        if (entry.time !== null && entry.time !== undefined) {
+            shown = formatTime(entry.time);
+        } else if (entry.lapsDown >= 1) {
+            shown = '+' + entry.lapsDown + (entry.lapsDown === 1 ? ' lap' : ' laps');
+        } else if (typeof entry.estTime === 'number' && typeof res.time === 'number') {
+            shown = '+' + Math.max(0.1, entry.estTime - res.time).toFixed(1) + ' s';
+        } else {
+            shown = '';
+        }
+        li.appendChild(el('span', 'res-row-time', shown));
         list.appendChild(li);
     });
 
